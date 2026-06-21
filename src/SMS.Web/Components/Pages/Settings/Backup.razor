@@ -1,0 +1,128 @@
+@page "/settings/backup"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using SMS.Application.Interfaces
+@using SMS.Web.Services
+@inject IDatabaseBackupService BackupService
+@inject ToastService Toast
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Database Backup</PageTitle>
+
+<div class="page-header">
+    <h1>Database Backup</h1>
+    <p class="hint">Create and download manual SQL Server backups. Admin only.</p>
+</div>
+
+<div class="card">
+    <h3>Create Backup</h3>
+    <p class="hint">
+        Creates a new <code>.bak</code> file in the configured backup folder. Use before major updates or term-end archiving.
+    </p>
+    <div class="actions">
+        <button class="btn btn-icon" data-tooltip="Create a new database backup" disabled="@isBusy" @onclick="CreateBackupAsync">
+            <AppIcon Name="upload" />
+            <span>@(isBusy ? "Creating Backup..." : "Create Backup Now")</span>
+        </button>
+        <a class="btn btn-secondary" href="/help">Backup Help</a>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Available Backups</h3>
+    @if (backups.Count == 0)
+    {
+        <p class="hint">No backup files yet. Create one using the button above.</p>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>File</th>
+                        <th>Size</th>
+                        <th>Created (UTC)</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var backup in backups)
+                    {
+                        <tr>
+                            <td><code>@backup.FileName</code></td>
+                            <td>@FormatSize(backup.SizeBytes)</td>
+                            <td>@backup.CreatedUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                            <td>
+                                <a class="btn btn-secondary btn-icon btn-sm" href="@GetDownloadUrl(backup.FileName)" data-tooltip="Download backup file">
+                                    <AppIcon Name="download" />
+                                    <span>Download</span>
+                                </a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private IReadOnlyList<SMS.Application.DTOs.DatabaseBackupInfo> backups = Array.Empty<SMS.Application.DTOs.DatabaseBackupInfo>();
+    private bool isBusy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBackupsAsync();
+    }
+
+    private async Task LoadBackupsAsync()
+    {
+        backups = await BackupService.ListBackupsAsync();
+    }
+
+    private async Task CreateBackupAsync()
+    {
+        if (isBusy)
+        {
+            return;
+        }
+
+        isBusy = true;
+        try
+        {
+            var result = await BackupService.CreateBackupAsync();
+            if (result.Succeeded)
+            {
+                Toast.Success($"Backup created: {result.FileName}");
+                await LoadBackupsAsync();
+            }
+            else
+            {
+                Toast.Error(result.ErrorMessage ?? "Backup failed.");
+            }
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private static string GetDownloadUrl(string fileName) =>
+        $"/settings/backup/download/{Uri.EscapeDataString(fileName)}";
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024)
+        {
+            return $"{bytes} B";
+        }
+
+        if (bytes < 1024 * 1024)
+        {
+            return $"{bytes / 1024.0:0.#} KB";
+        }
+
+        return $"{bytes / (1024.0 * 1024.0):0.##} MB";
+    }
+}

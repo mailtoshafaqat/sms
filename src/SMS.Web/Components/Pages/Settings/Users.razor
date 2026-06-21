@@ -1,0 +1,244 @@
+@page "/settings/users"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using SMS.Application.Interfaces
+@using SMS.Infrastructure.Identity
+@inject UserManager<ApplicationUser> UserManager
+@inject RoleManager<IdentityRole> RoleManager
+@inject ITeacherAssignmentService TeacherAssignmentService
+@inject ToastService Toast
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>User Accounts</PageTitle>
+
+<div class="page-header">
+    <h1>User Accounts</h1>
+    <p class="hint">Manage login accounts for this offline installation. No email is sent — passwords are set directly here.</p>
+</div>
+
+<div class="card">
+    <h3>Demo / Test Accounts</h3>
+    <ul class="promotion-help">
+        <li><strong>Admin:</strong> <code>admin@school.local</code> / <code>Admin@123</code></li>
+        <li><strong>Coordinator:</strong> <code>coordinator@school.local</code> / <code>Coordinator@123</code></li>
+        <li><strong>Teacher:</strong> <code>teacher@school.local</code> / <code>Teacher@123</code></li>
+    </ul>
+    <p class="hint">Coordinators manage attendance across all sections, notifications, and academic years. Teachers see only their assigned sections.</p>
+</div>
+
+<div class="card form-grid">
+    <h3 class="span-2">Create Account</h3>
+    <label>Email <InputText @bind-Value="createEmail" class="field-input" autocomplete="off" /></label>
+    <label>Display Name <InputText @bind-Value="createDisplayName" class="field-input" autocomplete="off" /></label>
+    <label>Password <InputText type="password" @bind-Value="createPassword" class="field-input" autocomplete="new-password" /></label>
+    <label>
+        Role
+        <InputSelect @bind-Value="createRole" class="field-select">
+            <option value="Admin">Admin</option>
+            <option value="Coordinator">Coordinator</option>
+            <option value="Teacher">Teacher</option>
+        </InputSelect>
+    </label>
+    <div class="actions span-2">
+        <button type="button" class="btn btn-icon" @onclick="CreateUserAsync">
+            <AppIcon Name="add" />
+            <span>Create User</span>
+        </button>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Accounts</h3>
+    @if (users.Count == 0)
+    {
+        <p class="hint">No users found.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Email</th>
+                        <th>Name</th>
+                        <th>Role</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var user in users)
+                    {
+                        <tr>
+                            <td><code>@user.Email</code></td>
+                            <td>@user.DisplayName</td>
+                            <td>@user.Role</td>
+                            <td>@(user.IsActive ? "Active" : "Inactive")</td>
+                            <td>
+                                <button type="button" class="btn btn-secondary btn-icon" @onclick="() => ToggleActiveAsync(user)">
+                                    <AppIcon Name="save" />
+                                    <span>@(user.IsActive ? "Deactivate" : "Activate")</span>
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+<div class="card form-grid">
+    <h3 class="span-2">Reset Password</h3>
+    <p class="hint span-2">Use this when someone forgets their password. Works offline — no email required.</p>
+    <label>
+        User
+        <InputSelect @bind-Value="resetUserId" class="field-select">
+            <option value="">Select user...</option>
+            @foreach (var user in users)
+            {
+                <option value="@user.Id">@user.Email</option>
+            }
+        </InputSelect>
+    </label>
+    <label>New Password <InputText type="password" @bind-Value="resetPassword" class="field-input" autocomplete="new-password" /></label>
+    <div class="actions span-2">
+        <button type="button" class="btn btn-icon" disabled="@string.IsNullOrWhiteSpace(resetUserId)" @onclick="ResetPasswordAsync">
+            <AppIcon Name="save" />
+            <span>Reset Password</span>
+        </button>
+    </div>
+</div>
+
+@code {
+    private readonly List<UserRow> users = [];
+    private string createEmail = string.Empty;
+    private string createDisplayName = string.Empty;
+    private string createPassword = string.Empty;
+    private string createRole = "Teacher";
+    private string resetUserId = string.Empty;
+    private string resetPassword = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUsersAsync();
+    }
+
+    private async Task LoadUsersAsync()
+    {
+        users.Clear();
+        foreach (var user in UserManager.Users.OrderBy(x => x.Email))
+        {
+            var roles = await UserManager.GetRolesAsync(user);
+            users.Add(new UserRow(
+                user.Id,
+                user.Email ?? string.Empty,
+                user.DisplayName ?? string.Empty,
+                roles.FirstOrDefault() ?? "-",
+                user.IsActive));
+        }
+    }
+
+    private async Task CreateUserAsync()
+    {
+        if (string.IsNullOrWhiteSpace(createEmail) || string.IsNullOrWhiteSpace(createPassword))
+        {
+            Toast.Error("Email and password are required.");
+            return;
+        }
+
+        if (await UserManager.FindByEmailAsync(createEmail.Trim()) is not null)
+        {
+            Toast.Error("A user with this email already exists.");
+            return;
+        }
+
+        var user = new ApplicationUser
+        {
+            UserName = createEmail.Trim(),
+            Email = createEmail.Trim(),
+            EmailConfirmed = true,
+            DisplayName = string.IsNullOrWhiteSpace(createDisplayName) ? createEmail.Trim() : createDisplayName.Trim(),
+            IsActive = true
+        };
+
+        var result = await UserManager.CreateAsync(user, createPassword);
+        if (!result.Succeeded)
+        {
+            Toast.Error(string.Join(" ", result.Errors.Select(x => x.Description)));
+            return;
+        }
+
+        if (await RoleManager.RoleExistsAsync(createRole))
+        {
+            await UserManager.AddToRoleAsync(user, createRole);
+        }
+
+        if (createRole == "Teacher")
+        {
+            var display = user.DisplayName ?? "Teacher User";
+            var parts = display.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            var firstName = parts.Length > 0 ? parts[0] : "Teacher";
+            var lastName = parts.Length > 1 ? parts[1] : firstName;
+            await TeacherAssignmentService.EnsureTeacherProfileAsync(user.Id, firstName, lastName);
+        }
+
+        createEmail = string.Empty;
+        createDisplayName = string.Empty;
+        createPassword = string.Empty;
+        createRole = "Teacher";
+        Toast.Success("User created.");
+        await LoadUsersAsync();
+    }
+
+    private async Task ResetPasswordAsync()
+    {
+        if (string.IsNullOrWhiteSpace(resetUserId) || string.IsNullOrWhiteSpace(resetPassword))
+        {
+            Toast.Error("Select a user and enter a new password.");
+            return;
+        }
+
+        var user = await UserManager.FindByIdAsync(resetUserId);
+        if (user is null)
+        {
+            Toast.Error("User not found.");
+            return;
+        }
+
+        var token = await UserManager.GeneratePasswordResetTokenAsync(user);
+        var result = await UserManager.ResetPasswordAsync(user, token, resetPassword);
+        if (!result.Succeeded)
+        {
+            Toast.Error(string.Join(" ", result.Errors.Select(x => x.Description)));
+            return;
+        }
+
+        resetPassword = string.Empty;
+        Toast.Success($"Password reset for {user.Email}.");
+    }
+
+    private async Task ToggleActiveAsync(UserRow row)
+    {
+        var user = await UserManager.FindByIdAsync(row.Id);
+        if (user is null)
+        {
+            Toast.Error("User not found.");
+            return;
+        }
+
+        user.IsActive = !user.IsActive;
+        var result = await UserManager.UpdateAsync(user);
+        if (!result.Succeeded)
+        {
+            Toast.Error(string.Join(" ", result.Errors.Select(x => x.Description)));
+            return;
+        }
+
+        Toast.Success(user.IsActive ? $"{user.Email} activated." : $"{user.Email} deactivated.");
+        await LoadUsersAsync();
+    }
+
+    private sealed record UserRow(string Id, string Email, string DisplayName, string Role, bool IsActive);
+}

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none" role="img" aria-label="ARTechnologies bee logo">
+  <defs>
+    <linearGradient id="hiveVert" x1="256" y1="110" x2="256" y2="250" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#fde68a"/>
+      <stop offset="45%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#d97706"/>
+    </linearGradient>
+  </defs>
+  <path d="M 193.5 159 L 97 159 A 21 21 0 0 0 76 180 A 21 21 0 0 0 97 201 L 193.5 201" fill="none" stroke="url(#hiveVert)" stroke-width="9" stroke-linejoin="round"/>
+  <path d="M 318.5 159 L 415 159 A 21 21 0 0 1 436 180 A 21 21 0 0 1 415 201 L 318.5 201" fill="none" stroke="url(#hiveVert)" stroke-width="9" stroke-linejoin="round"/>
+  <g fill="url(#hiveVert)">
+    <circle cx="112" cy="180" r="7"/><circle cx="139" cy="180" r="7"/><circle cx="166" cy="180" r="7"/>
+    <circle cx="346" cy="180" r="7"/><circle cx="373" cy="180" r="7"/><circle cx="400" cy="180" r="7"/>
+  </g>
+  <polygon points="256,113 311.5,146 311.5,214 256,247 200.5,214 200.5,146" fill="url(#hiveVert)" stroke="url(#hiveVert)" stroke-width="10" stroke-linejoin="round"/>
+  <circle cx="236" cy="174" r="9" fill="#78350f"/><circle cx="276" cy="174" r="9" fill="#78350f"/>
+  <path d="M 226 136 L 194 88" stroke="url(#hiveVert)" stroke-width="9" stroke-linecap="round"/>
+  <path d="M 286 136 L 318 88" stroke="url(#hiveVert)" stroke-width="9" stroke-linecap="round"/>
+  <circle cx="194" cy="88" r="10" fill="url(#hiveVert)"/><circle cx="318" cy="88" r="10" fill="url(#hiveVert)"/>
+</svg>

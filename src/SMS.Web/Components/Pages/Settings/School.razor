@@ -1,0 +1,339 @@
+@page "/settings/school"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Components.Forms
+@using SMS.Application.DTOs
+@using SMS.Application.Common
+@using SMS.Application.Interfaces
+@using SMS.Domain.Common
+@using SMS.Web.Services
+@inject ISchoolService SchoolService
+@inject SchoolBrandingRefresh BrandingRefresh
+@inject ToastService Toast
+@inject ConfirmDialogService ConfirmDialog
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+
+<PageTitle>School Settings</PageTitle>
+
+<div class="page-header">
+    <h1>School Settings</h1>
+</div>
+
+@if (model is null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <div class="card settings-section">
+        <h3>School Logo</h3>
+        <div class="logo-upload-row">
+            @if (!string.IsNullOrWhiteSpace(model.LogoPath))
+            {
+                <img src="@model.LogoPath" alt="School logo" class="school-logo-preview" />
+            }
+            else
+            {
+                <div class="logo-placeholder">No logo</div>
+            }
+
+            <div class="logo-upload-actions">
+                <label class="btn btn-secondary btn-icon file-upload-btn" data-tooltip="Upload school logo">
+                    <AppIcon Name="upload" />
+                    <span>Choose file</span>
+                    <InputFile OnChange="OnLogoSelectedAsync" accept=".png,.jpg,.jpeg,.webp,.gif" class="file-input-hidden" />
+                </label>
+                @if (!string.IsNullOrWhiteSpace(model.LogoPath))
+                {
+                    <button type="button" class="btn btn-danger btn-icon" data-tooltip="Remove school logo" @onclick="RemoveLogoAsync">
+                        <AppIcon Name="delete" />
+                        <span>Remove Logo</span>
+                    </button>
+                }
+            </div>
+        </div>
+        <p class="hint">PNG, JPG, WEBP, or GIF. Max 2 MB. Logo appears in the sidebar after upload.</p>
+    </div>
+
+    <EditForm FormName="school-settings" Model="model" OnValidSubmit="SaveAsync" class="card form-grid form-grid-2 settings-form">
+        <h3 class="span-2">School Details</h3>
+        <label class="span-2">School Name <InputText @bind-Value="model.Name" autocomplete="organization" /></label>
+        <label class="span-2">Address <InputText @bind-Value="model.Address" autocomplete="street-address" /></label>
+        <label>Phone <InputText @bind-Value="model.Phone" autocomplete="tel" /></label>
+        <label>Email <InputText @bind-Value="model.Email" autocomplete="email" /></label>
+        <label>WhatsApp Number <InputText @bind-Value="model.WhatsAppNumber" autocomplete="tel" /></label>
+        <label>School Start Time <InputText @bind-Value="startTimeText" placeholder="07:30" /></label>
+        <label>Late Grace (minutes) <InputNumber @bind-Value="model.LateAfterMinutes" /></label>
+        <label>School End Time <InputText @bind-Value="endTimeText" placeholder="13:00" /></label>
+        <p class="hint span-2">
+            Example: start 08:00 + grace 60 min → on-time until 09:00, late after 09:00.
+            First scan of the day marks IN; second scan marks OUT.
+        </p>
+
+        <div class="weekly-off-settings span-2">
+            <h3>Parent notifications (WhatsApp)</h3>
+            <p class="hint">Opens pre-filled WhatsApp links from the Notifications page — no API key required.</p>
+            <div class="weekly-off-grid">
+                <label class="weekly-off-option">
+                    <InputCheckbox @bind-Value="model.NotifyAbsent" />
+                    Notify when marked absent
+                </label>
+                <label class="weekly-off-option">
+                    <InputCheckbox @bind-Value="model.NotifyLate" />
+                    Notify when student is late
+                </label>
+            </div>
+            <p class="hint">
+                Placeholders: <code>{SchoolName}</code>, <code>{StudentName}</code>, <code>{Date}</code>,
+                <code>{Class}</code>, <code>{Section}</code>, <code>{ClassSection}</code>.
+                Leave blank to use the built-in default message.
+            </p>
+            <label class="span-2">
+                Absent message template
+                <InputTextArea @bind-Value="model.AbsentNotificationTemplate" rows="3" class="field-input template-input" placeholder="@NotificationMessageBuilder.DefaultAbsentTemplate" />
+            </label>
+            <div class="actions">
+                <button type="button" class="btn btn-secondary" @onclick="ResetAbsentTemplate">Reset absent to default</button>
+            </div>
+            <label class="span-2">
+                Late message template
+                <InputTextArea @bind-Value="model.LateNotificationTemplate" rows="2" class="field-input template-input" placeholder="@NotificationMessageBuilder.DefaultLateTemplate" />
+            </label>
+            <div class="actions">
+                <button type="button" class="btn btn-secondary" @onclick="ResetLateTemplate">Reset late to default</button>
+            </div>
+            <div class="notification-preview">
+                <p class="hint"><strong>Preview (sample):</strong></p>
+                <p class="notification-preview-text">@GetAbsentPreview()</p>
+                <p class="notification-preview-text">@GetLatePreview()</p>
+            </div>
+        </div>
+
+        <div class="weekly-off-settings span-2">
+            <h3>Recurring Weekly Off Days</h3>
+            <p class="hint">Punjab schools usually have Sunday off. Some schools also close on Saturday.</p>
+            <div class="weekly-off-presets">
+                <button type="button" class="btn btn-secondary" @onclick="SetPunjabSundayOnly">Punjab (Sunday only)</button>
+                <button type="button" class="btn btn-secondary" @onclick="SetSaturdaySunday">Saturday + Sunday</button>
+                <button type="button" class="btn btn-secondary" @onclick="SetNoWeeklyOff">No weekly off</button>
+            </div>
+            <div class="weekly-off-grid">
+                @foreach (var day in weekdayOptions)
+                {
+                    <label class="weekly-off-option">
+                        <InputCheckbox @bind-Value="day.IsSelected" />
+                        @day.Label
+                    </label>
+                }
+            </div>
+        </div>
+
+        <div class="form-actions span-2">
+            <button class="btn btn-icon" type="submit" data-tooltip="Save school settings">
+                <AppIcon Name="save" />
+                <span>Save Settings</span>
+            </button>
+        </div>
+    </EditForm>
+}
+
+@code {
+    private SchoolSettingsDto? model;
+    private string startTimeText = "07:30";
+    private string endTimeText = "13:00";
+    private readonly List<WeekdayOption> weekdayOptions = Enum.GetValues<DayOfWeek>()
+        .Select(day => new WeekdayOption { Day = day, Label = day.ToString() })
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        model = await SchoolService.GetSchoolSettingsAsync();
+        if (model is not null)
+        {
+            startTimeText = model.SchoolStartTime.ToString("HH:mm");
+            endTimeText = model.SchoolEndTime.ToString("HH:mm");
+            ApplyWeeklyOffToUi(model.WeeklyOffDays);
+        }
+    }
+
+    private void ApplyWeeklyOffToUi(WeeklyOffDays offDays)
+    {
+        foreach (var day in weekdayOptions)
+        {
+            day.IsSelected = WeeklyOffRules.IsOffDay(day.Day, offDays);
+        }
+    }
+
+    private WeeklyOffDays ReadWeeklyOffFromUi()
+    {
+        var value = WeeklyOffDays.None;
+        foreach (var day in weekdayOptions.Where(x => x.IsSelected))
+        {
+            value |= WeeklyOffRules.ToFlag(day.Day);
+        }
+
+        return value;
+    }
+
+    private void SetPunjabSundayOnly() => ApplyWeeklyOffToUi(WeeklyOffDays.Sunday);
+
+    private void SetSaturdaySunday() => ApplyWeeklyOffToUi(WeeklyOffDays.Saturday | WeeklyOffDays.Sunday);
+
+    private void SetNoWeeklyOff() => ApplyWeeklyOffToUi(WeeklyOffDays.None);
+
+    private void ResetAbsentTemplate()
+    {
+        if (model is null)
+        {
+            return;
+        }
+
+        model.AbsentNotificationTemplate = null;
+    }
+
+    private void ResetLateTemplate()
+    {
+        if (model is null)
+        {
+            return;
+        }
+
+        model.LateNotificationTemplate = null;
+    }
+
+    private string GetAbsentPreview() =>
+        model is null
+            ? string.Empty
+            : NotificationMessageBuilder.BuildAbsentMessage(
+                model.AbsentNotificationTemplate,
+                string.IsNullOrWhiteSpace(model.Name) ? "Demo School" : model.Name,
+                "Ali Raza",
+                DateOnly.FromDateTime(DateTime.Today),
+                "Class 9",
+                "A");
+
+    private string GetLatePreview() =>
+        model is null
+            ? string.Empty
+            : NotificationMessageBuilder.BuildLateMessage(
+                model.LateNotificationTemplate,
+                string.IsNullOrWhiteSpace(model.Name) ? "Demo School" : model.Name,
+                "Ali Raza",
+                DateOnly.FromDateTime(DateTime.Today));
+
+    private async Task SaveAsync()
+    {
+        if (model is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(model.Name))
+        {
+            Toast.Error("School name is required.");
+            return;
+        }
+
+        if (!TimeOnly.TryParse(startTimeText, out var start))
+        {
+            Toast.Error("Invalid school start time. Use HH:mm format (e.g. 07:30).");
+            return;
+        }
+
+        if (!TimeOnly.TryParse(endTimeText, out var end))
+        {
+            Toast.Error("Invalid school end time. Use HH:mm format (e.g. 13:00).");
+            return;
+        }
+
+        if (end <= start)
+        {
+            Toast.Error("School end time must be after start time.");
+            return;
+        }
+
+        model.SchoolStartTime = start;
+        model.SchoolEndTime = end;
+        model.WeeklyOffDays = ReadWeeklyOffFromUi();
+
+        try
+        {
+            await SchoolService.UpdateSchoolSettingsAsync(model);
+            Toast.Success("School settings saved.");
+            BrandingRefresh.NotifyChanged();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task OnLogoSelectedAsync(InputFileChangeEventArgs e)
+    {
+        if (model is null)
+        {
+            return;
+        }
+
+        var file = e.File;
+        if (file.Size > 2 * 1024 * 1024)
+        {
+            Toast.Error("Logo file must be 2 MB or smaller.");
+            return;
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream(2 * 1024 * 1024);
+            model.LogoPath = await SchoolService.UploadLogoAsync(model.Id, stream, file.Name);
+            Toast.Success("Logo uploaded.");
+            BrandingRefresh.NotifyChanged();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task RemoveLogoAsync()
+    {
+        if (model is null)
+        {
+            return;
+        }
+
+        var confirmed = await ConfirmDialog.ConfirmAsync(
+            "Remove logo?",
+            "Remove the school logo from the sidebar and settings?",
+            "Remove",
+            "Cancel");
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        try
+        {
+            await SchoolService.RemoveLogoAsync(model.Id);
+            model.LogoPath = null;
+            Toast.Success("Logo removed.");
+            BrandingRefresh.NotifyChanged();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private sealed class WeekdayOption
+    {
+        public DayOfWeek Day { get; init; }
+        public string Label { get; init; } = string.Empty;
+        public bool IsSelected { get; set; }
+    }
+}

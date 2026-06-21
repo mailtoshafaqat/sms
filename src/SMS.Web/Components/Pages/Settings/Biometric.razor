@@ -1,0 +1,264 @@
+@page "/settings/biometric"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Components.Forms
+@using SMS.Application.DTOs
+@using SMS.Application.Interfaces
+@using SMS.Domain.Common
+@using SMS.Domain.Enums
+@inject IBiometricConfigService BiometricConfigService
+@inject ToastService Toast
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Biometric Devices</PageTitle>
+
+<div class="page-header">
+    <h1>Biometric Device Configuration</h1>
+    <button type="button" class="btn btn-icon" data-tooltip="Add new biometric device" @onclick="AddNewDevice">
+        <AppIcon Name="add" />
+        <span>Add New Device</span>
+    </button>
+</div>
+
+<div class="card">
+    <h3>Configured Devices</h3>
+    @if (devices.Count == 0)
+    {
+        <p>No devices configured yet. Use <strong>Add New Device</strong> below to set up your gate reader.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Connection</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var device in devices)
+                    {
+                        <tr class="@(device.Id == model.Id ? "row-selected" : null)">
+                            <td><code>@device.Id</code></td>
+                            <td>@device.Name @(device.IsEnabled ? "" : "(disabled)")</td>
+                            <td>@BiometricTypeRules.GetDisplayName(device.BiometricType)</td>
+                            <td>@device.ConnectionType</td>
+                            <td>
+                                <span class="status-badge @(device.IsConnected ? "status-connected" : "status-disconnected")">
+                                    @(device.IsConnected ? "Connected" : "Not connected")
+                                </span>
+                            </td>
+                            <td>
+                                <button class="btn btn-secondary btn-icon-only" type="button" data-tooltip="Edit device" @onclick="() => EditDevice(device)">
+                                    <AppIcon Name="edit" />
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+<EditForm FormName="biometric-settings" Model="model" OnValidSubmit="SaveAsync" class="card form-grid form-grid-2 settings-form">
+    <h3 class="span-2">@(model.Id > 0 ? $"Edit Device — {model.Name}" : "Add Device")</h3>
+
+    @if (model.Id > 0)
+    {
+        <p class="hint span-2">Device ID: <code>@model.Id</code></p>
+    }
+
+    <label class="span-2">Device Name <InputText @bind-Value="model.Name" placeholder="e.g. Gate Finger" /></label>
+
+    <label>
+        Biometric Type
+        <InputSelect @bind-Value="model.BiometricType">
+            <option value="@BiometricType.Fingerprint">Fingerprint</option>
+            <option value="@BiometricType.Face">Face</option>
+            <option value="@BiometricType.Card">Card</option>
+            <option value="@BiometricType.Both">Both</option>
+        </InputSelect>
+    </label>
+
+    <label>
+        Connection Type
+        <InputSelect @bind-Value="model.ConnectionType">
+            <option value="@BiometricConnectionType.Usb">USB</option>
+            <option value="@BiometricConnectionType.Tcp">TCP (LAN)</option>
+        </InputSelect>
+    </label>
+
+    @if (model.ConnectionType == BiometricConnectionType.Tcp)
+    {
+        <label>IP Address <InputText @bind-Value="model.IpAddress" placeholder="192.168.1.100" /></label>
+        <label>Port <InputNumber @bind-Value="model.Port" /></label>
+        <label>Machine Number <InputNumber @bind-Value="model.MachineNumber" /></label>
+    }
+    else
+    {
+        <label class="span-2">COM Port <InputText @bind-Value="model.ComPort" placeholder="COM3" /></label>
+    }
+
+    <label class="checkbox-field span-2">
+        <InputCheckbox @bind-Value="model.IsEnabled" />
+        Device enabled (shown on Live Gate and used for scans)
+    </label>
+
+    <label class="span-2">Duplicate Scan Block (seconds) <InputNumber @bind-Value="model.DuplicateScanBlockSeconds" /></label>
+    <p class="hint span-2">Ignore repeat scans from the same student within this many seconds.</p>
+
+    <div class="form-actions span-2">
+        <button class="btn btn-icon" type="submit" data-tooltip="Save device settings">
+            <AppIcon Name="save" />
+            <span>Save Device</span>
+        </button>
+        <button class="btn btn-secondary btn-icon" type="button" data-tooltip="Test device connection" @onclick="TestAsync" disabled="@(model.Id == 0)">
+            <AppIcon Name="test" />
+            <span>Test Connection</span>
+        </button>
+    </div>
+</EditForm>
+
+@if (model.Id > 0)
+{
+    <div class="card device-status-panel">
+        <h3>Device Status</h3>
+        <div class="grid-4">
+            <div class="stat">
+                <div class="label">Connection</div>
+                <div class="value">
+                    <span class="status-badge @(model.IsConnected ? "status-connected" : "status-disconnected")">
+                        @(model.IsConnected ? "Connected" : "Not connected")
+                    </span>
+                </div>
+            </div>
+            <div class="stat">
+                <div class="label">Last Connected</div>
+                <div class="value value-sm">@(model.LastConnectedAt?.ToLocalTime().ToString("g") ?? "—")</div>
+            </div>
+            <div class="stat">
+                <div class="label">Last Scan</div>
+                <div class="value value-sm">@(model.LastScanAt?.ToLocalTime().ToString("g") ?? "—")</div>
+            </div>
+            <div class="stat">
+                <div class="label">Device ID</div>
+                <div class="value value-sm">@model.Id</div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private BiometricDeviceDto model = new() { Name = "Gate Finger", BiometricType = BiometricType.Fingerprint };
+    private IReadOnlyList<BiometricDeviceDto> devices = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDevicesAsync();
+        if (devices.Count > 0)
+        {
+            model = Clone(devices[0]);
+        }
+    }
+
+    private async Task LoadDevicesAsync()
+    {
+        devices = await BiometricConfigService.GetDevicesAsync();
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(model.Name))
+        {
+            Toast.Error("Device name is required.");
+            return;
+        }
+
+        if (model.ConnectionType == BiometricConnectionType.Tcp && string.IsNullOrWhiteSpace(model.IpAddress))
+        {
+            Toast.Error("IP address is required for TCP devices.");
+            return;
+        }
+
+        try
+        {
+            model.Id = await BiometricConfigService.SaveDeviceAsync(model);
+            Toast.Success("Biometric device saved.");
+            await LoadDevicesAsync();
+            model = devices.FirstOrDefault(x => x.Id == model.Id) ?? model;
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task TestAsync()
+    {
+        if (model.Id == 0)
+        {
+            Toast.Error("Save the device first, then test the connection.");
+            return;
+        }
+
+        try
+        {
+            var ok = await BiometricConfigService.TestConnectionAsync(model.Id);
+            await LoadDevicesAsync();
+            model = devices.FirstOrDefault(x => x.Id == model.Id) ?? model;
+            if (ok)
+            {
+                Toast.Success("Device connection successful.");
+            }
+            else
+            {
+                Toast.Error("Device connection failed.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private void EditDevice(BiometricDeviceDto device)
+    {
+        model = Clone(device);
+    }
+
+    private void AddNewDevice()
+    {
+        model = new BiometricDeviceDto
+        {
+            Name = "New Device",
+            BiometricType = BiometricType.Fingerprint,
+            ConnectionType = BiometricConnectionType.Usb,
+            IsEnabled = true,
+            Port = 4370,
+            MachineNumber = 1,
+            DuplicateScanBlockSeconds = 30
+        };
+    }
+
+    private static BiometricDeviceDto Clone(BiometricDeviceDto source) => new()
+    {
+        Id = source.Id,
+        Name = source.Name,
+        IsEnabled = source.IsEnabled,
+        BiometricType = source.BiometricType,
+        ConnectionType = source.ConnectionType,
+        IpAddress = source.IpAddress,
+        Port = source.Port,
+        MachineNumber = source.MachineNumber,
+        ComPort = source.ComPort,
+        DuplicateScanBlockSeconds = source.DuplicateScanBlockSeconds,
+        IsConnected = source.IsConnected,
+        LastConnectedAt = source.LastConnectedAt,
+        LastScanAt = source.LastScanAt
+    };
+}

@@ -1,0 +1,166 @@
+@page "/attendance/late-report"
+@rendermode InteractiveServer
+@using SMS.Application.DTOs
+@using SMS.Application.Interfaces
+@inject IAttendanceService AttendanceService
+@inject IClassService ClassService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ToastService Toast
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Late Students Report</PageTitle>
+
+<PageIntro Title="Frequent Late Students"
+           Subtitle="Find students who are late repeatedly over a date range — useful for follow-up with parents or class teachers." />
+
+<div class="card toolbar-card">
+    <label class="toolbar-field">
+        <span class="field-label">From</span>
+        <InputDate @bind-Value="fromDate" class="field-input" />
+    </label>
+    <label class="toolbar-field">
+        <span class="field-label">To</span>
+        <InputDate @bind-Value="toDate" class="field-input" />
+    </label>
+    <label class="toolbar-field">
+        <span class="field-label">Class / Section</span>
+        <InputSelect @bind-Value="sectionId" class="field-select">
+            <option value="0">All sections</option>
+            @foreach (var option in sectionOptions)
+            {
+                <option value="@option.SectionId">@option.DisplayName</option>
+            }
+        </InputSelect>
+    </label>
+    <label class="toolbar-field">
+        <span class="field-label">Min late days</span>
+        <InputNumber @bind-Value="minLateCount" class="field-input" min="1" max="100" />
+    </label>
+    <label class="toolbar-field">
+        <span class="field-label">Min consecutive</span>
+        <InputNumber @bind-Value="minConsecutiveLate" class="field-input" min="0" max="30" />
+    </label>
+    <button type="button" class="btn btn-icon" @onclick="LoadAsync">
+        <AppIcon Name="load" />
+        <span>Load report</span>
+    </button>
+</div>
+
+<p class="hint">
+  Shows students marked <strong>Late</strong> at least the minimum number of times between the selected dates.
+  Set <strong>Min consecutive</strong> to 2 or more to focus on students late on back-to-back school days.
+</p>
+
+@if (isLoading)
+{
+    <p class="hint">Loading report...</p>
+}
+else if (hasLoaded && rows.Count == 0)
+{
+    <div class="card empty-state compact">
+        <AppIcon Name="warning" />
+        <p>No students match these filters. Try a wider date range or lower the minimum late days.</p>
+    </div>
+}
+else if (rows.Count > 0)
+{
+    <div class="card table-card">
+        <div class="card-header-row">
+            <h3>@rows.Count student@(rows.Count == 1 ? "" : "s")</h3>
+            <span class="hint">@DateOnly.FromDateTime(fromDate).ToString("d") – @DateOnly.FromDateTime(toDate).ToString("d")</span>
+        </div>
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Student</th>
+                        <th>Roll</th>
+                        <th>Class</th>
+                        <th>Late days</th>
+                        <th>Attended days</th>
+                        <th>Longest streak</th>
+                        <th>Current streak</th>
+                        <th>Last late</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in rows)
+                    {
+                        <tr>
+                            <td>@row.StudentName</td>
+                            <td>@row.RollNumber</td>
+                            <td>@row.ClassSection</td>
+                            <td><strong>@row.LateCount</strong></td>
+                            <td>@row.AttendedDays</td>
+                            <td>
+                                @if (row.ConsecutiveLateDays >= 3)
+                                {
+                                    <span class="status-badge status-disconnected">@row.ConsecutiveLateDays days</span>
+                                }
+                                else
+                                {
+                                    @row.ConsecutiveLateDays
+                                }
+                            </td>
+                            <td>@row.CurrentLateStreak</td>
+                            <td>@row.LastLateDate.ToString("d")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private IReadOnlyList<ChronicLateStudentDto> rows = [];
+    private IReadOnlyList<ClassSectionOptionDto> sectionOptions = [];
+    private DateTime fromDate = DateTime.Today.AddDays(-30);
+    private DateTime toDate = DateTime.Today;
+    private int sectionId;
+    private int minLateCount = 3;
+    private int minConsecutiveLate;
+    private bool isLoading;
+    private bool hasLoaded;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        sectionOptions = await ClassService.GetSectionOptionsAsync(userId);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        hasLoaded = false;
+
+        try
+        {
+            var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var from = DateOnly.FromDateTime(fromDate);
+            var to = DateOnly.FromDateTime(toDate);
+
+            rows = await AttendanceService.GetChronicLateStudentsAsync(
+                from,
+                to,
+                minLateCount,
+                minConsecutiveLate,
+                sectionId > 0 ? sectionId : null,
+                userId);
+            hasLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            rows = [];
+            hasLoaded = true;
+            Toast.Error(ex.Message);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

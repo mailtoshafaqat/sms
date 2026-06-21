@@ -1,0 +1,116 @@
+@page "/help"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Help</PageTitle>
+
+<div class="page-header">
+    <h1>Help Guide</h1>
+    <p class="hint">Quick reference for using the School Management System.</p>
+</div>
+
+<div class="card help-section">
+    <h2>Getting Started</h2>
+    <ol>
+        <li>Open the app and go to <strong>Login</strong>.</li>
+        <li>Sign in with your admin account (default: <code>admin@school.local</code> / <code>Admin@123</code>).</li>
+        <li>Or test as teacher: <code>teacher@school.local</code> / <code>Teacher@123</code>.</li>
+        <li>Update school details under <strong>Settings → School Settings</strong>.</li>
+        <li>Add classes, then register students.</li>
+    </ol>
+</div>
+
+<div class="card help-section">
+    <h2>Test Accounts</h2>
+    <ul>
+        <li><strong>Admin</strong> — <code>admin@school.local</code> / <code>Admin@123</code> (full access)</li>
+        <li><strong>Teacher</strong> — <code>teacher@school.local</code> / <code>Teacher@123</code> (attendance &amp; students)</li>
+    </ul>
+    <p class="hint">Sign out and sign in with each account to compare what teachers can and cannot access.</p>
+</div>
+
+<div class="card help-section">
+    <h2>Login Troubleshooting</h2>
+    <ul>
+        <li>Use the full email address as the username (for example, <code>admin@school.local</code>).</li>
+        <li>Passwords are case-sensitive.</li>
+        <li>If login fails after a server restart, confirm SQL Server is running and the connection string in <code>appsettings.json</code> is correct.</li>
+        <li><strong>Forgot password (offline):</strong> an admin can reset it at <strong>Settings → User Accounts</strong>. No email is required.</li>
+    </ul>
+</div>
+
+<div class="card help-section">
+    <h2>Students &amp; Classes</h2>
+    <ul>
+        <li><strong>Classes</strong> — create class names and sections (for example, 9-A).</li>
+        <li><strong>Students</strong> — add student records and map each student’s biometric user ID for gate scans.</li>
+        <li><strong>Promote Students</strong> — move students to the next class at year-end or when sections change.</li>
+        <li>Use search and pagination on the student list for large rosters.</li>
+    </ul>
+</div>
+
+<div class="card help-section">
+    <h2>Attendance</h2>
+    <ul>
+        <li><strong>Mark Attendance</strong> — teachers or admins mark present, absent, late, or leave manually.</li>
+        <li><strong>Daily Sheet</strong> — review and finalize the day’s attendance summary.</li>
+        <li><strong>Holiday Calendar</strong> — one-time holidays (Eid, exams) or annual repeating holidays (14 Aug, 25 Dec).</li>
+        <li><strong>Live Gate</strong> — monitor biometric IN/OUT events in real time.</li>
+        <li><strong>Local Biometric Test</strong> — simulate scans during development (replace with device SDK in production).</li>
+    </ul>
+    <p class="hint">
+        School start time and late grace are configured in School Settings.
+        First scan of the day = IN; second scan = OUT.
+    </p>
+</div>
+
+<div class="card help-section">
+    <h2>Biometric Device</h2>
+    <ul>
+        <li>Configure device connection (USB or TCP) under <strong>Settings → Biometric Device</strong>.</li>
+        <li>Ensure each student’s biometric user ID matches the ID stored on the device.</li>
+        <li>The background worker polls enabled devices and records attendance automatically.</li>
+    </ul>
+</div>
+
+<div class="card help-section">
+    <h2>Database Backup (Admin)</h2>
+    <p>
+        Admins can create a manual SQL Server backup from <strong>Settings → Database Backup</strong>.
+        Backups are saved as <code>.bak</code> files that you can download from the same page.
+    </p>
+    <ul>
+        <li>Click <strong>Create Backup Now</strong> before major changes or end-of-term archiving.</li>
+        <li>Store downloaded backup files securely off-site (USB drive, cloud storage, or another server).</li>
+        <li>To restore, use SQL Server Management Studio or <code>RESTORE DATABASE</code> with the downloaded <code>.bak</code> file.</li>
+    </ul>
+    <p class="hint">
+        Docker SQL Server (port 14331): run <code>docker compose up -d</code> from the project root so
+        <code>App_Data/backups</code> is mapped to <code>/var/opt/mssql/backup</code>.
+    </p>
+</div>
+
+<div class="card help-section">
+    <h2>Holidays &amp; Off Days</h2>
+    <ul>
+        <li><strong>Weekly off</strong> — Settings → School Settings → Recurring Weekly Off Days (e.g. every Sunday).</li>
+        <li><strong>Annual holiday</strong> — Attendance → Holiday Calendar → check “Repeat every year” (e.g. 14 Aug, 25 Dec).</li>
+        <li><strong>One-time holiday</strong> — same calendar, leave “Repeat every year” unchecked (e.g. Eid, exam day).</li>
+    </ul>
+    <p class="hint">Lunar holidays like Eid change each year — mark them once per year without the annual repeat option.</p>
+</div>
+
+<div class="card help-section">
+    <h2>Roles</h2>
+    <ul>
+        <li><strong>Admin</strong> — full access including settings, promotion, and database backup.</li>
+        <li><strong>Teacher</strong> — attendance and student views (as configured).</li>
+    </ul>
+</div>
+
+<div class="card help-section">
+    <h2>Support</h2>
+    <p>
+        For technical issues, note the error message, the page you were on, and the time it occurred.
+        Check the terminal or server logs when running locally with <code>dotnet run</code>.
+    </p>
+</div>

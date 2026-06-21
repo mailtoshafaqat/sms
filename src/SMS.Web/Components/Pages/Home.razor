@@ -1,0 +1,163 @@
+@page "/"
+@rendermode InteractiveServer
+@using SMS.Application.Interfaces
+@using SMS.Domain.Common
+@using SMS.Domain.Enums
+@inject IDashboardService DashboardService
+@inject AuthenticationStateProvider AuthStateProvider
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Dashboard</PageTitle>
+
+<PageIntro Title="Dashboard" Subtitle="Today’s attendance at a glance. Use the quick links below for common tasks.">
+    <a class="btn btn-secondary btn-icon" href="/attendance/manual">
+        <AppIcon Name="attendance" />
+        <span>Mark Attendance</span>
+    </a>
+    <a class="btn btn-secondary btn-icon" href="/attendance/live">
+        <AppIcon Name="gate" />
+        <span>Live Gate</span>
+    </a>
+</PageIntro>
+
+@if (stats is null)
+{
+    <div class="card empty-state">
+        <AppIcon Name="load" />
+        <p>Loading dashboard...</p>
+    </div>
+}
+else
+{
+    @if (stats.TodaySummary.IsHoliday && !holidayNoticeDismissed)
+    {
+        <div class="alert alert-info holiday-notice" role="status">
+            <span>
+                @(string.IsNullOrWhiteSpace(stats.TodaySummary.HolidayTitle)
+                    ? "Today is a school holiday."
+                    : $"Today is a holiday: {stats.TodaySummary.HolidayTitle}")
+            </span>
+            <button type="button" class="alert-dismiss" data-tooltip="Dismiss" aria-label="Dismiss holiday notice" @onclick="DismissHolidayNotice">
+                <AppIcon Name="close" />
+            </button>
+        </div>
+    }
+
+    <div class="stat-grid">
+        <StatCard Label="Enrolled" Value="@stats.TodaySummary.EnrolledStudents.ToString()" Icon="users" Tone="neutral" Hint="Active students" />
+        <StatCard Label="Present" Value="@stats.TodaySummary.Present.ToString()" Icon="success" Tone="present" />
+        <StatCard Label="Late" Value="@stats.TodaySummary.Late.ToString()" Icon="warning" Tone="late" />
+        <StatCard Label="Absent" Value="@stats.TodaySummary.Absent.ToString()" Icon="error" Tone="absent" />
+        <StatCard Label="Not marked" Value="@stats.TodaySummary.Unmarked.ToString()" Icon="info" Tone="unmarked" Hint="Still need attendance" />
+    </div>
+
+    <div class="quick-links card">
+        <h3>Quick links</h3>
+        <div class="quick-links-grid">
+            <a href="/attendance/daily" class="quick-link-card">
+                <AppIcon Name="attendance" />
+                <strong>Daily sheet</strong>
+                <span>See who is in, late, or absent</span>
+            </a>
+            <a href="/attendance/calendar" class="quick-link-card">
+                <AppIcon Name="calendar" />
+                <strong>Holiday calendar</strong>
+                <span>Mark Eid, breaks, and public holidays</span>
+            </a>
+            <a href="/settings/school" class="quick-link-card">
+                <AppIcon Name="settings" />
+                <strong>School timings</strong>
+                <span>Start time, grace period, weekly off</span>
+            </a>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>Gate devices</h3>
+        @if (stats.EnabledDevices.Count == 0)
+        {
+            <div class="empty-state compact">
+                <p>No biometric devices configured yet.</p>
+                <a class="btn btn-secondary" href="/settings/biometric">Add device</a>
+            </div>
+        }
+        else
+        {
+            <div class="device-grid">
+                @foreach (var device in stats.EnabledDevices)
+                {
+                    <div class="device-card">
+                        <div class="device-card-header">
+                            <strong>@device.Name</strong>
+                            <span class="status-badge @(device.IsConnected ? "status-connected" : "status-disconnected")">
+                                @(device.IsConnected ? "Online" : "Offline")
+                            </span>
+                        </div>
+                        <p>@BiometricTypeRules.GetDisplayName(device.BiometricType)</p>
+                        <p class="hint">Last scan: @(device.LastScanAt?.ToString("g") ?? "None")</p>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="card">
+        <div class="card-header-row">
+            <h3>Recent gate activity</h3>
+            <a href="/attendance/live" class="btn btn-secondary btn-icon">
+                <AppIcon Name="gate" />
+                <span>Open live gate</span>
+            </a>
+        </div>
+        @if (stats.RecentScans.Count == 0)
+        {
+            <p class="hint">No gate scans recorded yet today.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Student</th>
+                            <th>Class</th>
+                            <th>Time</th>
+                            <th>Direction</th>
+                            <th>Type</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var log in stats.RecentScans)
+                        {
+                            <tr>
+                                <td>@log.StudentName <span class="hint">(@log.RollNumber)</span></td>
+                                <td>@log.ClassName</td>
+                                <td>@log.ScanTime.ToString("t")</td>
+                                <td>
+                                    <span class="status-pill @(log.Direction == ScanDirection.In ? "status-present" : "status-leave")">
+                                        @log.Direction
+                                    </span>
+                                </td>
+                                <td>@BiometricTypeRules.GetDisplayName(log.ScanType)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private Application.DTOs.DashboardStatsDto? stats;
+    private bool holidayNoticeDismissed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        stats = await DashboardService.GetDashboardAsync(userId);
+    }
+
+    private void DismissHolidayNotice() => holidayNoticeDismissed = true;
+}

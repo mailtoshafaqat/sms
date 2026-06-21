@@ -1,0 +1,30 @@
+@using SMS.Domain.Enums
+
+<span class="status-pill status-@CssKey @(Compact ? "status-pill-compact" : "")">
+    @Label
+</span>
+
+@code {
+    [Parameter] public AttendanceStatus? Status { get; set; }
+    [Parameter] public bool Compact { get; set; }
+
+    private string Label => Status switch
+    {
+        AttendanceStatus.Present => "Present",
+        AttendanceStatus.Absent => "Absent",
+        AttendanceStatus.Late => "Late",
+        AttendanceStatus.Leave => "Leave",
+        AttendanceStatus.Holiday => "Holiday",
+        _ => "Not marked"
+    };
+
+    private string CssKey => Status switch
+    {
+        AttendanceStatus.Present => "present",
+        AttendanceStatus.Absent => "absent",
+        AttendanceStatus.Late => "late",
+        AttendanceStatus.Leave => "leave",
+        AttendanceStatus.Holiday => "holiday",
+        _ => "unmarked"
+    };
+}

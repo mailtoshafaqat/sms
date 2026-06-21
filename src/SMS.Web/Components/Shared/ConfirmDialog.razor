@@ -1,0 +1,63 @@
+@rendermode InteractiveServer
+@using SMS.Web.Services
+@implements IDisposable
+@inject ConfirmDialogService ConfirmDialogService
+
+@if (request is not null)
+{
+    <div class="modal-backdrop" @onclick="CancelAsync"></div>
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
+        <div class="modal-header">
+            <AppIcon Name="warning" />
+            <h2 id="confirm-dialog-title">@request.Title</h2>
+        </div>
+        <p class="modal-body">@request.Message</p>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" data-tooltip="Cancel action" @onclick="CancelAsync">
+                <AppIcon Name="cancel" />
+                <span>@request.CancelLabel</span>
+            </button>
+            <button type="button" class="btn btn-danger" data-tooltip="Confirm action" @onclick="ConfirmAsync">
+                <AppIcon Name="delete" />
+                <span>@request.ConfirmLabel</span>
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    private ConfirmDialogRequest? request;
+
+    protected override void OnInitialized()
+    {
+        ConfirmDialogService.OnShow += HandleShow;
+    }
+
+    private void HandleShow(ConfirmDialogRequest dialogRequest)
+    {
+        _ = InvokeAsync(() =>
+        {
+            request = dialogRequest;
+            StateHasChanged();
+        });
+    }
+
+    private Task ConfirmAsync()
+    {
+        request?.Completion.TrySetResult(true);
+        request = null;
+        return Task.CompletedTask;
+    }
+
+    private Task CancelAsync()
+    {
+        request?.Completion.TrySetResult(false);
+        request = null;
+        return Task.CompletedTask;
+    }
+
+    public void Dispose()
+    {
+        ConfirmDialogService.OnShow -= HandleShow;
+    }
+}

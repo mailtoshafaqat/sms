@@ -1,0 +1,207 @@
+@page "/attendance/live"
+@rendermode InteractiveServer
+@using SMS.Application.Interfaces
+@using SMS.Domain.Common
+@using SMS.Domain.Enums
+@using SMS.Web.Services
+@inject IAttendanceService AttendanceService
+@inject IBiometricConfigService BiometricConfigService
+@inject ToastService Toast
+@implements IDisposable
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Live Gate</PageTitle>
+
+<PageIntro Title="Live Gate Monitor" Subtitle="Today's biometric scans in real time. Use Biometric Test or Gate kiosk for local face/fingerprint.">
+    <a class="btn btn-secondary btn-icon" href="/attendance/gate">
+        <AppIcon Name="gate" />
+        <span>Open Gate Kiosk</span>
+    </a>
+</PageIntro>
+
+@if (devices.Count == 0)
+{
+    <div class="card">
+        <p>No biometric devices configured. Add Gate Finger or Gate Face in Settings.</p>
+    </div>
+}
+else
+{
+    <div class="card toolbar-card live-gate-toolbar">
+        <label class="toolbar-field live-gate-device-field">
+            <span class="field-label">Device</span>
+            <InputSelect @bind-Value="selectedDeviceId" @bind-Value:after="RefreshAsync" class="field-select">
+                @foreach (var item in devices)
+                {
+                    <option value="@item.Id">@item.Name — @BiometricTypeRules.GetDisplayName(item.BiometricType)</option>
+                }
+            </InputSelect>
+        </label>
+        <button type="button" class="btn btn-icon" @onclick="RefreshAsync">
+            <AppIcon Name="load" />
+            <span>Refresh</span>
+        </button>
+    </div>
+
+    @if (selectedDevice is not null)
+    {
+        <div class="card device-status-panel live-gate-status">
+            <div class="live-gate-status-header">
+                <h3>@selectedDevice.Name</h3>
+                <span class="status-badge @(selectedDevice.IsConnected ? "status-connected" : "status-disconnected")">
+                    @(selectedDevice.IsConnected ? "Connected" : "Disconnected")
+                </span>
+            </div>
+            <div class="grid-4">
+                <div class="stat">
+                    <div class="label">Device ID</div>
+                    <div class="value value-sm">@selectedDevice.Id</div>
+                </div>
+                <div class="stat">
+                    <div class="label">Type</div>
+                    <div class="value value-sm">@BiometricTypeRules.GetDisplayName(selectedDevice.BiometricType)</div>
+                </div>
+                <div class="stat">
+                    <div class="label">Last scan</div>
+                    <div class="value value-sm">@(selectedDevice.LastScanAt?.ToString("g") ?? "None")</div>
+                </div>
+                <div class="stat">
+                    <div class="label">Scans today</div>
+                    <div class="value value-sm">@logs.Count</div>
+                </div>
+            </div>
+            <p class="hint live-gate-device-hint">Use the device ID above when configuring hardware or contacting support.</p>
+        </div>
+    }
+
+    <AuthorizeView Roles="Admin">
+        <Authorized>
+            <div class="card live-simulate">
+                <h3>Simulate scan</h3>
+                <p class="hint">
+                    Admin only — simulate scans when no hardware is connected.
+                    Use the student's <strong>Biometric User ID</strong> (from Students → Edit, e.g. roll number or <code>FACE-5</code>),
+                    not the device ID above.
+                </p>
+                <div class="live-simulate-controls">
+                    <input @bind="testBiometricUserId" class="field-input live-simulate-input" placeholder="Biometric User ID (e.g. FACE-3 or 101)" />
+                    <button type="button" class="btn" @onclick="SimulateInAsync">Simulate IN</button>
+                    <button type="button" class="btn btn-secondary" @onclick="SimulateOutAsync">Simulate OUT</button>
+                </div>
+            </div>
+        </Authorized>
+    </AuthorizeView>
+}
+
+<div class="card table-card">
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Student</th>
+                    <th>Roll</th>
+                    <th>Class</th>
+                    <th>Time</th>
+                    <th>Direction</th>
+                    <th>Type</th>
+                    <th>Device</th>
+                    <th>Device ID</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (logs.Count == 0)
+                {
+                    <tr>
+                        <td colspan="8">No scans today yet.</td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var log in logs)
+                    {
+                        <tr>
+                            <td>@log.StudentName</td>
+                            <td>@log.RollNumber</td>
+                            <td>@log.ClassName</td>
+                            <td>@log.ScanTime.ToString("t")</td>
+                            <td>@log.Direction</td>
+                            <td>@BiometricTypeRules.GetDisplayName(log.ScanType)</td>
+                            <td>@(log.DeviceName ?? "—")</td>
+                            <td>@(log.DeviceId?.ToString() ?? "—")</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    private IReadOnlyList<Application.DTOs.BiometricDeviceDto> devices = [];
+    private IReadOnlyList<Application.DTOs.AttendanceLogDto> logs = [];
+    private int selectedDeviceId;
+    private string testBiometricUserId = "1";
+    private Timer? timer;
+
+    private Application.DTOs.BiometricDeviceDto? selectedDevice =>
+        devices.FirstOrDefault(x => x.Id == selectedDeviceId);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshAsync();
+        timer = new Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await RefreshAsync();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+    }
+
+    private async Task RefreshAsync()
+    {
+        devices = await BiometricConfigService.GetEnabledDevicesAsync();
+        if (devices.Count > 0 && !devices.Any(x => x.Id == selectedDeviceId))
+        {
+            selectedDeviceId = devices[0].Id;
+        }
+
+        logs = await AttendanceService.GetRecentLogsAsync(50, DateOnly.FromDateTime(DateTime.Today));
+        if (selectedDeviceId > 0)
+        {
+            logs = logs.Where(x => x.DeviceId == selectedDeviceId).ToList();
+        }
+    }
+
+    private async Task SimulateInAsync() => await SimulateAsync(ScanDirection.In);
+    private async Task SimulateOutAsync() => await SimulateAsync(ScanDirection.Out);
+
+    private async Task SimulateAsync(ScanDirection direction)
+    {
+        if (selectedDeviceId == 0)
+        {
+            Toast.Error("Select a device first.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(testBiometricUserId))
+        {
+            Toast.Error("Enter a biometric user ID.");
+            return;
+        }
+
+        try
+        {
+            await AttendanceService.ProcessBiometricScanAsync(testBiometricUserId.Trim(), selectedDeviceId, direction);
+            Toast.Success($"Simulated {direction} scan for user {testBiometricUserId.Trim()}.", "Scan simulated");
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    public void Dispose() => timer?.Dispose();
+}

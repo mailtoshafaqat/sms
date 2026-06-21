@@ -1,0 +1,296 @@
+@page "/attendance/calendar"
+@rendermode InteractiveServer
+@using SMS.Application.DTOs
+@using SMS.Application.Interfaces
+@using SMS.Domain.Common
+@inject IAttendanceService AttendanceService
+@inject ToastService Toast
+@inject ConfirmDialogService ConfirmDialog
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Coordinator")]
+
+<PageTitle>Attendance Calendar</PageTitle>
+
+<h1>Attendance Calendar</h1>
+<p>
+    Recurring weekly off days (e.g. Sunday) are configured in
+    <a href="/settings/school">Settings → School</a>.
+    Use this calendar for public holidays, exam days, and other closures.
+</p>
+
+<div class="card actions">
+    <button class="btn btn-secondary btn-icon-only" type="button" data-tooltip="Previous month" @onclick="PreviousMonthAsync">
+        <AppIcon Name="previous" />
+    </button>
+    <strong class="calendar-title">@CurrentMonthTitle</strong>
+    <button class="btn btn-secondary btn-icon-only" type="button" data-tooltip="Next month" @onclick="NextMonthAsync">
+        <AppIcon Name="next" />
+    </button>
+    <button class="btn btn-icon" type="button" data-tooltip="Go to today" @onclick="LoadAsync">
+        <AppIcon Name="refresh" />
+        <span>Today</span>
+    </button>
+</div>
+
+<div class="calendar-legend card">
+    <span class="legend-item"><span class="legend-swatch weekly-off"></span> Weekly off</span>
+    <span class="legend-item"><span class="legend-swatch annual-recurring"></span> Annual holiday (every year)</span>
+    <span class="legend-item"><span class="legend-swatch holiday"></span> One-time holiday</span>
+</div>
+
+@if (calendar is null)
+{
+    <p>Loading calendar...</p>
+}
+else
+{
+    <div class="attendance-calendar card">
+        <div class="calendar-weekdays">
+            @foreach (var weekday in Weekdays)
+            {
+                <div class="calendar-weekday">@weekday</div>
+            }
+        </div>
+        <div class="calendar-grid">
+            @foreach (var day in calendar.Days)
+            {
+                <button type="button"
+                        class="calendar-day @(day.IsCurrentMonth ? "" : "other-month") @(day.IsToday ? "today" : "") @(day.IsAnnualRecurringHoliday ? "annual-recurring" : day.IsManualHoliday ? "holiday" : "") @(day.IsWeeklyOff ? "weekly-off" : "") @(selectedDate == day.Date ? "selected" : "")"
+                        @onclick="() => SelectDayAsync(day)">
+                    <span class="day-number">@day.Date.Day</span>
+                    @if (day.IsHoliday)
+                    {
+                        <span class="holiday-label">@day.HolidayTitle</span>
+                    }
+                </button>
+            }
+        </div>
+    </div>
+
+    <div class="card form-grid">
+        <h3>@FormTitle — @selectedDate.ToString("dddd, dd MMM yyyy")</h3>
+
+        @if (selectedDay?.IsWeeklyOff == true && selectedDay.IsManualHoliday != true)
+        {
+            <p class="hint">This date is a recurring weekly off day. Change weekly off settings in <a href="/settings/school">School Settings</a>.</p>
+        }
+        else
+        {
+            <label>
+                Holiday Name
+                <InputText @bind-Value="holidayTitle" class="field-input" placeholder="e.g. Independence Day, Eid" />
+            </label>
+            <label>
+                Description (optional)
+                <InputText @bind-Value="holidayDescription" class="field-input" placeholder="Optional note" />
+            </label>
+            <label class="checkbox-field">
+                <InputCheckbox @bind-Value="repeatsAnnually" />
+                Repeat every year on @selectedDate.ToString("dd MMM") (same date each year)
+            </label>
+            @if (repeatsAnnually)
+            {
+                <p class="hint">Good for fixed dates like 14 Aug or 25 Dec. Lunar holidays like Eid change each year — leave this unchecked and mark them yearly.</p>
+            }
+            <div class="actions">
+                <button class="btn btn-icon" type="button" data-tooltip="Save holiday" @onclick="SaveHolidayAsync" disabled="@string.IsNullOrWhiteSpace(holidayTitle)">
+                    <AppIcon Name="save" />
+                    <span>Save Holiday</span>
+                </button>
+                @if (selectedDay?.IsManualHoliday == true)
+                {
+                    <button class="btn btn-danger btn-icon" type="button" data-tooltip="Remove holiday" @onclick="RemoveHolidayAsync">
+                        <AppIcon Name="delete" />
+                        <span>Remove Holiday</span>
+                    </button>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="card">
+        <h3>Annual Holidays (Every Year)</h3>
+        @if (annualHolidays.Count == 0)
+        {
+            <p class="hint">No annual holidays yet. Select a date above and check “Repeat every year”.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Name</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var holiday in annualHolidays)
+                        {
+                            <tr>
+                                <td>@holiday.RecurringDay.ToString("00")/@holiday.RecurringMonth.ToString("00")</td>
+                                <td>@holiday.Title</td>
+                                <td>
+                                    <button type="button" class="btn btn-danger btn-icon btn-sm" data-tooltip="Remove annual holiday" @onclick="() => RemoveAnnualHolidayAsync(holiday)">
+                                        <AppIcon Name="delete" />
+                                        <span>Remove</span>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private static readonly string[] Weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+    private AttendanceCalendarMonthDto? calendar;
+    private AttendanceCalendarDayDto? selectedDay;
+    private IReadOnlyList<SchoolHolidayDto> annualHolidays = [];
+    private DateOnly selectedDate = DateOnly.FromDateTime(DateTime.Today);
+    private string holidayTitle = string.Empty;
+    private string? holidayDescription;
+    private bool repeatsAnnually;
+    private int viewYear;
+    private int viewMonth;
+
+    private string CurrentMonthTitle =>
+        calendar is null
+            ? string.Empty
+            : new DateOnly(calendar.Year, calendar.Month, 1).ToString("MMMM yyyy");
+
+    private string FormTitle =>
+        selectedDay?.IsManualHoliday == true ? "Edit Holiday" : "Mark Holiday";
+
+    protected override async Task OnInitializedAsync()
+    {
+        viewYear = DateTime.Today.Year;
+        viewMonth = DateTime.Today.Month;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        viewYear = DateTime.Today.Year;
+        viewMonth = DateTime.Today.Month;
+        selectedDate = DateOnly.FromDateTime(DateTime.Today);
+        await LoadCalendarAsync();
+    }
+
+    private async Task PreviousMonthAsync()
+    {
+        var date = new DateOnly(viewYear, viewMonth, 1).AddMonths(-1);
+        viewYear = date.Year;
+        viewMonth = date.Month;
+        selectedDate = date;
+        await LoadCalendarAsync();
+    }
+
+    private async Task NextMonthAsync()
+    {
+        var date = new DateOnly(viewYear, viewMonth, 1).AddMonths(1);
+        viewYear = date.Year;
+        viewMonth = date.Month;
+        selectedDate = date;
+        await LoadCalendarAsync();
+    }
+
+    private async Task LoadCalendarAsync()
+    {
+        calendar = await AttendanceService.GetAttendanceCalendarAsync(viewYear, viewMonth);
+        annualHolidays = await AttendanceService.GetAnnualHolidaysAsync();
+
+        var day = calendar.Days.FirstOrDefault(x => x.Date == selectedDate)
+            ?? calendar.Days.First(x => x.IsCurrentMonth);
+        await SelectDayAsync(day);
+    }
+
+    private Task SelectDayAsync(AttendanceCalendarDayDto day)
+    {
+        selectedDate = day.Date;
+        selectedDay = day;
+        holidayTitle = day.IsManualHoliday ? day.HolidayTitle ?? string.Empty : string.Empty;
+        holidayDescription = null;
+        repeatsAnnually = day.IsAnnualRecurringHoliday;
+        return Task.CompletedTask;
+    }
+
+    private async Task SaveHolidayAsync()
+    {
+        try
+        {
+            await AttendanceService.MarkHolidayAsync(selectedDate, holidayTitle, holidayDescription, repeatsAnnually);
+            var message = repeatsAnnually
+                ? $"Annual holiday saved for every {selectedDate:dd MMM}."
+                : $"Holiday saved for {selectedDate:dd MMM yyyy}.";
+            Toast.Success(message);
+            await LoadCalendarAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task RemoveHolidayAsync()
+    {
+        var scope = selectedDay?.IsAnnualRecurringHoliday == true
+            ? $"the annual holiday on every {selectedDate:dd MMM}"
+            : $"the holiday on {selectedDate:dd MMM yyyy}";
+
+        var confirmed = await ConfirmDialog.ConfirmAsync(
+            "Remove holiday?",
+            $"Remove {scope}?",
+            "Remove",
+            "Cancel");
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        try
+        {
+            await AttendanceService.RemoveHolidayAsync(selectedDate);
+            holidayTitle = string.Empty;
+            holidayDescription = null;
+            repeatsAnnually = false;
+            Toast.Success("Holiday removed.");
+            await LoadCalendarAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task RemoveAnnualHolidayAsync(SchoolHolidayDto holiday)
+    {
+        var confirmed = await ConfirmDialog.ConfirmAsync(
+            "Remove annual holiday?",
+            $"Remove {holiday.Title} ({holiday.RecurringDay:00}/{holiday.RecurringMonth:00} every year)?",
+            "Remove",
+            "Cancel");
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        try
+        {
+            await AttendanceService.RemoveAnnualHolidayAsync(holiday.Id);
+            Toast.Success($"Removed annual holiday: {holiday.Title}.");
+            await LoadCalendarAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+}
+

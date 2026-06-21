@@ -1,0 +1,187 @@
+@page "/attendance/daily"
+@rendermode InteractiveServer
+@using SMS.Application.DTOs
+@using SMS.Application.Interfaces
+@using SMS.Domain.Enums
+@inject IAttendanceService AttendanceService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ToastService Toast
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Daily Sheet</PageTitle>
+
+<PageIntro Title="Daily Attendance Sheet" Subtitle="Review today’s attendance, see unmarked students, and close the day when school ends.">
+    <a class="btn btn-secondary btn-icon" href="/attendance/manual">
+        <AppIcon Name="attendance" />
+        <span>Manual marking</span>
+    </a>
+</PageIntro>
+
+<div class="card toolbar-card">
+    <InputDate @bind-Value="selectedDate" class="field-input toolbar-field" />
+    <button class="btn btn-icon" data-tooltip="Load daily summary" @onclick="LoadAsync">
+        <AppIcon Name="load" />
+        <span>Load</span>
+    </button>
+    <AuthorizeView Roles="Admin,Coordinator">
+        <Authorized>
+            <button class="btn btn-secondary btn-icon" data-tooltip="Mark absent for students without attendance" @onclick="FinalizeAsync" disabled="@(summary?.IsHoliday == true)">
+                <AppIcon Name="save" />
+                <span>Mark absent (end of day)</span>
+            </button>
+        </Authorized>
+    </AuthorizeView>
+</div>
+
+@if (summary?.IsHoliday == true)
+{
+    <div class="alert alert-info">
+        @(string.IsNullOrWhiteSpace(summary.HolidayTitle)
+            ? "This date is a school holiday. Absent marking is disabled."
+            : $"Holiday: {summary.HolidayTitle}. Absent marking is disabled.")
+    </div>
+}
+
+@if (summary is not null)
+{
+    <div class="stat-grid">
+        <StatCard Label="Enrolled" Value="@summary.EnrolledStudents.ToString()" Icon="users" Tone="neutral" />
+        <StatCard Label="Present" Value="@summary.Present.ToString()" Icon="success" Tone="present" />
+        <StatCard Label="Late" Value="@summary.Late.ToString()" Icon="warning" Tone="late" />
+        <StatCard Label="Absent" Value="@summary.Absent.ToString()" Icon="error" Tone="absent" />
+        <StatCard Label="Not marked" Value="@summary.Unmarked.ToString()" Icon="info" Tone="unmarked" />
+        <StatCard Label="Holiday" Value="@summary.Holidays.ToString()" Icon="calendar" Tone="holiday" />
+    </div>
+
+    <div class="card">
+        <div class="card-header-row">
+            <h3>Student list</h3>
+            <span class="hint">@FilteredRows.Count() of @rows.Count shown</span>
+        </div>
+
+        <div class="filter-chips" role="tablist" aria-label="Filter by status">
+            @foreach (var chip in FilterOptions)
+            {
+                <button type="button"
+                        class="filter-chip @(activeFilter == chip.Key ? "active" : "")"
+                        @onclick="() => activeFilter = chip.Key">
+                    @chip.Label (@chip.Count(rows))
+                </button>
+            }
+        </div>
+
+        @if (!FilteredRows.Any())
+        {
+            <div class="empty-state compact">
+                <p>No students match this filter.</p>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Roll</th>
+                            <th>Student</th>
+                            <th>Class</th>
+                            <th>Status</th>
+                            <th>Check-in</th>
+                            <th>Check-out</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in FilteredRows)
+                        {
+                            <tr class="row-status-@GetRowTone(row.Status)">
+                                <td>@row.RollNumber</td>
+                                <td>@row.StudentName</td>
+                                <td>@row.ClassName</td>
+                                <td><AttendanceStatusBadge Status="row.Status" Compact="true" /></td>
+                                <td>@(row.CheckInTime?.ToString("t") ?? "—")</td>
+                                <td>@(row.CheckOutTime?.ToString("t") ?? "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private DateTime selectedDate = DateTime.Today;
+    private DailyAttendanceSummaryDto? summary;
+    private IReadOnlyList<DailyAttendanceRowDto> rows = [];
+    private string activeFilter = "all";
+
+    private static readonly (string Key, string Label, Func<IReadOnlyList<DailyAttendanceRowDto>, int> Count)[] FilterOptions =
+    [
+        ("all", "All", r => r.Count),
+        ("present", "Present", r => r.Count(x => x.Status == AttendanceStatus.Present)),
+        ("late", "Late", r => r.Count(x => x.Status == AttendanceStatus.Late)),
+        ("absent", "Absent", r => r.Count(x => x.Status == AttendanceStatus.Absent)),
+        ("unmarked", "Not marked", r => r.Count(x => x.Status is null)),
+        ("holiday", "Holiday", r => r.Count(x => x.Status == AttendanceStatus.Holiday))
+    ];
+
+    private IEnumerable<DailyAttendanceRowDto> FilteredRows => activeFilter switch
+    {
+        "present" => rows.Where(x => x.Status == AttendanceStatus.Present),
+        "late" => rows.Where(x => x.Status == AttendanceStatus.Late),
+        "absent" => rows.Where(x => x.Status == AttendanceStatus.Absent),
+        "unmarked" => rows.Where(x => x.Status is null),
+        "holiday" => rows.Where(x => x.Status == AttendanceStatus.Holiday),
+        _ => rows
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var userId = await GetUserIdAsync();
+        var date = DateOnly.FromDateTime(selectedDate);
+        summary = await AttendanceService.GetDailySummaryAsync(date, userId);
+        rows = await AttendanceService.GetDailyAttendanceRowsAsync(date, userId);
+    }
+
+    private async Task FinalizeAsync()
+    {
+        if (summary?.IsHoliday == true)
+        {
+            Toast.Error("Cannot mark absent on a holiday.");
+            return;
+        }
+
+        try
+        {
+            var userId = await GetUserIdAsync();
+            await AttendanceService.FinalizeDailyAttendanceAsync(DateOnly.FromDateTime(selectedDate), userId);
+            Toast.Success("Absent students marked for students without attendance.");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private static string GetRowTone(AttendanceStatus? status) => status switch
+    {
+        AttendanceStatus.Present => "present",
+        AttendanceStatus.Late => "late",
+        AttendanceStatus.Absent => "absent",
+        AttendanceStatus.Holiday => "holiday",
+        AttendanceStatus.Leave => "leave",
+        _ => "unmarked"
+    };
+
+    private async Task<string?> GetUserIdAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        return auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    }
+}

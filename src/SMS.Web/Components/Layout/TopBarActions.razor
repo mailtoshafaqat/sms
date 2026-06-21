@@ -1,0 +1,118 @@
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using SMS.Application.DTOs
+@using SMS.Application.Interfaces
+@inject IAcademicYearService AcademicYearService
+
+<div class="topbar-actions">
+    <AuthorizeView Roles="Admin,Coordinator">
+        <Authorized>
+            @if (sessionAlert is not null)
+            {
+                @if (menuOpen)
+                {
+                    <button type="button" class="topbar-notify-backdrop" aria-label="Close notifications" @onclick="CloseMenu"></button>
+                }
+
+                <div class="topbar-notify">
+                    <button type="button"
+                            class="topbar-notify-btn"
+                            aria-label="Notifications"
+                            aria-expanded="@menuOpen"
+                            aria-haspopup="true"
+                            @onclick="ToggleMenu">
+                        <AppIcon Name="bell" />
+                        <span class="topbar-notify-badge topbar-notify-badge-@sessionAlert.Severity">@GetBadgeText(sessionAlert)</span>
+                    </button>
+
+                    @if (menuOpen)
+                    {
+                        <div class="topbar-notify-menu" role="menu">
+                            <div class="topbar-notify-menu-header">1 Notification</div>
+                            <a class="topbar-notify-item" href="/settings/academic-years" role="menuitem" @onclick="CloseMenu">
+                                <span class="topbar-notify-item-icon topbar-notify-item-icon-@sessionAlert.Severity">
+                                    <AppIcon Name="@GetItemIcon(sessionAlert)" />
+                                </span>
+                                <span class="topbar-notify-item-body">
+                                    <span class="topbar-notify-item-title">@GetItemTitle(sessionAlert)</span>
+                                    <span class="topbar-notify-item-text">@GetItemText(sessionAlert)</span>
+                                </span>
+                                <span class="topbar-notify-item-time">@GetTimeLabel(sessionAlert)</span>
+                            </a>
+                            <div class="topbar-notify-menu-footer">
+                                <a href="/settings/academic-years" @onclick="CloseMenu">See All Notifications</a>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </Authorized>
+    </AuthorizeView>
+    <a class="btn btn-secondary btn-icon topbar-help" href="/help" aria-label="Open help guide">
+        <AppIcon Name="help" />
+        <span>Help</span>
+    </a>
+    <a class="btn btn-secondary btn-icon topbar-logout" href="/logout" aria-label="Sign out">
+        <AppIcon Name="logout" />
+        <span>Logout</span>
+    </a>
+</div>
+
+@code {
+    private AcademicYearSessionAlertDto? sessionAlert;
+    private bool menuOpen;
+
+    protected override async Task OnInitializedAsync()
+    {
+        sessionAlert = await AcademicYearService.GetSessionEndAlertAsync();
+    }
+
+    private void ToggleMenu() => menuOpen = !menuOpen;
+
+    private void CloseMenu() => menuOpen = false;
+
+    private static string GetBadgeText(AcademicYearSessionAlertDto alert) =>
+        alert.IsPastEndDate ? Math.Abs(alert.DaysRemaining).ToString() : alert.DaysRemaining.ToString();
+
+    private static string GetItemIcon(AcademicYearSessionAlertDto alert) =>
+        alert.IsPastEndDate ? "warning" : "calendar";
+
+    private static string GetItemTitle(AcademicYearSessionAlertDto alert) =>
+        alert.IsPastEndDate ? "Academic session ended" : "Academic session ending";
+
+    private static string GetItemText(AcademicYearSessionAlertDto alert)
+    {
+        if (alert.IsPastEndDate)
+        {
+            return $"\"{alert.YearName}\" ended on {alert.EndDate:d}. Promote students and set a new current year.";
+        }
+
+        if (alert.DaysRemaining == 0)
+        {
+            return $"\"{alert.YearName}\" ends today. Plan promotion and the next academic year.";
+        }
+
+        return $"\"{alert.YearName}\" ends on {alert.EndDate:d}.";
+    }
+
+    private static string GetTimeLabel(AcademicYearSessionAlertDto alert)
+    {
+        if (alert.IsPastEndDate)
+        {
+            var days = Math.Abs(alert.DaysRemaining);
+            return days == 1 ? "1 day ago" : $"{days} days ago";
+        }
+
+        if (alert.DaysRemaining == 0)
+        {
+            return "Today";
+        }
+
+        if (alert.DaysRemaining == 1)
+        {
+            return "1 day";
+        }
+
+        return $"{alert.DaysRemaining} days";
+    }
+}

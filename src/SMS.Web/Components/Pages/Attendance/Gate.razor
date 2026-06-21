@@ -1,0 +1,225 @@
+@page "/attendance/gate"
+@layout KioskLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
+@using SMS.Application.Interfaces
+@using SMS.Domain.Enums
+@using SMS.Web.Services
+@inject ILocalBiometricService LocalBiometricService
+@inject IJSRuntime Js
+@inject ToastService Toast
+@implements IAsyncDisposable
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Attendance Gate</PageTitle>
+
+<div class="gate-kiosk">
+    <header class="gate-kiosk-header">
+        <h1>Attendance Gate</h1>
+        <p>Look at the camera or scan your fingerprint</p>
+    </header>
+
+    <div class="gate-kiosk-feedback @(isError ? "error" : lastSuccess ? "success" : "")">
+        @if (!string.IsNullOrWhiteSpace(message))
+        {
+            <p class="gate-kiosk-message">@message</p>
+        }
+        else
+        {
+            <p class="gate-kiosk-message muted">Ready — stand in front of the camera</p>
+        }
+    </div>
+
+    <video id="gate-face-video" autoplay playsinline muted class="gate-kiosk-video"></video>
+
+    <div class="gate-kiosk-actions">
+        @if (!cameraRunning)
+        {
+            <button class="btn btn-lg" type="button" @onclick="StartCameraAsync">Start Camera</button>
+        }
+        else
+        {
+            <button class="btn btn-secondary btn-lg" type="button" @onclick="ScanFingerprintAsync">Scan Fingerprint</button>
+        }
+        <a class="btn btn-secondary btn-lg" href="/">Exit</a>
+    </div>
+</div>
+
+@code {
+    private IJSObjectReference? module;
+    private DotNetObjectReference<Gate>? dotNetRef;
+    private string? message;
+    private bool isError;
+    private bool lastSuccess;
+    private bool cameraRunning;
+    private bool autoScanEnabled;
+    private int lastAutoScanStudentId;
+    private DateTime lastAutoScanAt = DateTime.MinValue;
+    private readonly SemaphoreSlim scanLock = new(1, 1);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || module is not null)
+        {
+            return;
+        }
+
+        try
+        {
+            module = await Js.InvokeAsync<IJSObjectReference>("import", "./js/local-biometric.js");
+            dotNetRef = DotNetObjectReference.Create(this);
+            await StartCameraAsync();
+        }
+        catch (Exception ex)
+        {
+            SetMessage(ex.Message, true);
+            StateHasChanged();
+        }
+    }
+
+    private async Task StartCameraAsync()
+    {
+        if (module is null || dotNetRef is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await module.InvokeVoidAsync("loadFaceModels");
+            await module.InvokeVoidAsync("startCamera", "gate-face-video");
+            cameraRunning = true;
+            autoScanEnabled = true;
+            await module.InvokeVoidAsync("startAutoFaceScan", "gate-face-video", dotNetRef, 2500);
+            SetMessage("Gate active — first scan marks IN, second marks OUT.", false);
+        }
+        catch (JSException ex)
+        {
+            SetMessage(ex.Message, true);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnFaceDetectedAsync(float[] descriptor)
+    {
+        if (!autoScanEnabled || descriptor.Length == 0)
+        {
+            return;
+        }
+
+        if (!await scanLock.WaitAsync(0))
+        {
+            return;
+        }
+
+        try
+        {
+            var match = await LocalBiometricService.MatchFaceAsync(descriptor);
+            if (match is null)
+            {
+                return;
+            }
+
+            if (match.StudentId == lastAutoScanStudentId &&
+                (DateTime.UtcNow - lastAutoScanAt).TotalSeconds < 8)
+            {
+                return;
+            }
+
+            var result = await LocalBiometricService.ScanByExternalIdAsync(match.ExternalId, BiometricType.Face);
+            if (!result.Success)
+            {
+                await InvokeAsync(() =>
+                {
+                    SetMessage(result.Message, true);
+                    StateHasChanged();
+                });
+                return;
+            }
+
+            lastAutoScanStudentId = match.StudentId;
+            lastAutoScanAt = DateTime.UtcNow;
+
+            await InvokeAsync(() =>
+            {
+                var text = $"{match.StudentName} — {result.Message}";
+                SetMessage(text, false, success: true);
+                Toast.Success(text, "Attendance Marked");
+                StateHasChanged();
+            });
+        }
+        finally
+        {
+            scanLock.Release();
+        }
+    }
+
+    private async Task ScanFingerprintAsync()
+    {
+        if (module is null)
+        {
+            SetMessage("Biometric module is not ready.", true);
+            return;
+        }
+
+        try
+        {
+            var credentialId = await module.InvokeAsync<string?>("verifyFingerprint", null);
+            if (string.IsNullOrWhiteSpace(credentialId))
+            {
+                SetMessage("Fingerprint scan cancelled.", true);
+                return;
+            }
+
+            var match = await LocalBiometricService.MatchFingerprintAsync(credentialId);
+            if (match is null)
+            {
+                SetMessage("Fingerprint not recognized. Enroll first under Biometric Test.", true);
+                Toast.Error("Fingerprint not recognized. Ask admin to enroll you first.", "Not Recognized");
+                return;
+            }
+
+            var result = await LocalBiometricService.ScanByExternalIdAsync(match.ExternalId, BiometricType.Fingerprint);
+            var text = $"{match.StudentName} — {result.Message}";
+            SetMessage(text, !result.Success, success: result.Success);
+            if (result.Success)
+            {
+                Toast.Success(text, "Attendance Marked");
+            }
+            else
+            {
+                Toast.Error(text, "Scan Failed");
+            }
+        }
+        catch (JSException ex)
+        {
+            SetMessage(ex.Message, true);
+        }
+    }
+
+    private void SetMessage(string text, bool error, bool success = false)
+    {
+        message = text;
+        isError = error;
+        lastSuccess = success && !error;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        dotNetRef?.Dispose();
+
+        if (module is not null)
+        {
+            try
+            {
+                await module.InvokeVoidAsync("stopAutoFaceScan");
+                await module.InvokeVoidAsync("stopCamera");
+                await module.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+        }
+    }
+}

@@ -1,0 +1,15 @@
+@using Microsoft.Extensions.Options
+@using SMS.Web.Configuration
+@inject IOptions<AppBrandingOptions> BrandingOptions
+
+<footer class="app-footer @CssClass">
+    <PoweredByBrand CssClass="app-footer-powered" />
+    <p class="app-footer-note">
+        Need help or a custom module?
+        <a href="@BrandingOptions.Value.CompanyWhatsAppUrl" target="_blank" rel="noopener">Contact @BrandingOptions.Value.CompanyName on WhatsApp</a>
+    </p>
+</footer>
+
+@code {
+    [Parameter] public string CssClass { get; set; } = string.Empty;
+}

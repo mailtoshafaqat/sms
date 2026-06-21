@@ -1,0 +1,70 @@
+@using Microsoft.Extensions.Options
+@using SMS.Application.Interfaces
+@using SMS.Web.Configuration
+@inject ISchoolService SchoolService
+@inject IOptions<AppBrandingOptions> BrandingOptions
+
+<div class="login-school-brand @CssClass">
+    @if (!string.IsNullOrWhiteSpace(logoPath))
+    {
+        <img src="@logoPath" alt="@displayName logo" class="login-school-logo @(LargeLogo ? "login-school-logo-lg" : "")" />
+    }
+    else if (LargeLogo)
+    {
+        <div class="login-school-logo-placeholder login-school-logo-lg" aria-hidden="true">
+            <span>@GetInitials(displayName)</span>
+        </div>
+    }
+
+    <h1>@displayName</h1>
+    @if (ShowSubtitle)
+    {
+        <p class="login-school-subtitle">@BrandingOptions.Value.ApplicationSubtitle</p>
+    }
+    @if (!string.IsNullOrWhiteSpace(Hint))
+    {
+        <p class="hint">@Hint</p>
+    }
+</div>
+
+@code {
+    [Parameter] public string CssClass { get; set; } = string.Empty;
+    [Parameter] public bool ShowSubtitle { get; set; } = true;
+    [Parameter] public bool LargeLogo { get; set; }
+    [Parameter] public string? Hint { get; set; }
+
+    private string displayName = "SMS";
+    private string? logoPath;
+
+    protected override async Task OnInitializedAsync()
+    {
+        displayName = BrandingOptions.Value.ApplicationName;
+
+        var school = await SchoolService.GetSchoolSettingsAsync();
+        if (school is not null)
+        {
+            if (!string.IsNullOrWhiteSpace(school.Name))
+            {
+                displayName = school.Name;
+            }
+
+            logoPath = school.LogoPath;
+        }
+    }
+
+    private static string GetInitials(string value)
+    {
+        var parts = value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+        {
+            return "S";
+        }
+
+        if (parts.Length == 1)
+        {
+            return parts[0][..1].ToUpperInvariant();
+        }
+
+        return string.Concat(parts[0][0], parts[^1][0]).ToUpperInvariant();
+    }
+}

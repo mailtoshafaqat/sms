@@ -1,0 +1,263 @@
+@page "/settings/staff"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using SMS.Application.DTOs
+@using SMS.Application.Interfaces
+@using SMS.Infrastructure.Identity
+@inject ITeacherAssignmentService TeacherAssignmentService
+@inject UserManager<ApplicationUser> UserManager
+@inject ToastService Toast
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Staff & Sections</PageTitle>
+
+<PageIntro Title="Staff & Section Assignment" Subtitle="Link teacher accounts to class sections. Teachers only see attendance and students for their assigned sections." />
+
+@if (!string.IsNullOrWhiteSpace(loadError))
+{
+    <div class="alert alert-error">@loadError</div>
+}
+else if (isLoading)
+{
+    <div class="card"><p class="hint">Loading staff...</p></div>
+}
+else
+{
+    <div class="card">
+        <h3>Assign class teacher</h3>
+        @if (assignmentRows.Count == 0)
+        {
+            <p class="hint">No sections found. Add classes under Classes first.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Class</th>
+                            <th>Section</th>
+                            <th>Class teacher</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in assignmentRows)
+                        {
+                            <tr>
+                                <td>@row.ClassName</td>
+                                <td>@row.SectionName</td>
+                                <td>
+                                    <InputSelect @bind-Value="row.SelectedTeacherId" class="field-select">
+                                        <option value="0">— Not assigned —</option>
+                                        @foreach (var teacher in teacherRows.Where(t => t.IsActive))
+                                        {
+                                            <option value="@teacher.Id">@teacher.FullName (@teacher.EmployeeCode)</option>
+                                        }
+                                    </InputSelect>
+                                </td>
+                                <td>
+                                    <button type="button" class="btn btn-secondary btn-icon" @onclick="() => SaveAssignmentAsync(row)">
+                                        <AppIcon Name="save" />
+                                        <span>Save</span>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
+    <div class="card">
+        <h3>Teachers</h3>
+        <p class="hint">Create teacher logins under User Accounts, then link them here if needed.</p>
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Code</th>
+                        <th>Login</th>
+                        <th>Sections</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (teacherRows.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="4">No teacher profiles yet.</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var teacher in teacherRows)
+                        {
+                            <tr>
+                                <td>@teacher.FullName</td>
+                                <td>@teacher.EmployeeCode</td>
+                                <td>@(teacher.UserEmail ?? "—")</td>
+                                <td>@(teacher.AssignedSections.Count == 0 ? "—" : string.Join(", ", teacher.AssignedSections))</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card form-grid">
+        <h3 class="span-2">Link user to teacher profile</h3>
+        <label>
+            User account
+            <InputSelect @bind-Value="linkUserId" class="field-select">
+                <option value="">Select user...</option>
+                @foreach (var user in teacherUsers)
+                {
+                    <option value="@user.Id">@user.Email</option>
+                }
+            </InputSelect>
+        </label>
+        <label>First name <InputText @bind-Value="linkFirstName" class="field-input" /></label>
+        <label>Last name <InputText @bind-Value="linkLastName" class="field-input" /></label>
+        <div class="actions span-2">
+            <button type="button" class="btn btn-icon" @onclick="LinkUserAsync">
+                <AppIcon Name="add" />
+                <span>Create / update teacher profile</span>
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    private List<SectionAssignmentRow> assignmentRows = [];
+    private List<TeacherDisplayRow> teacherRows = [];
+    private List<ApplicationUser> teacherUsers = [];
+    private string linkUserId = string.Empty;
+    private string linkFirstName = string.Empty;
+    private string linkLastName = string.Empty;
+    private bool isLoading = true;
+    private string? loadError;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        loadError = null;
+
+        try
+        {
+            var assignments = await TeacherAssignmentService.GetSectionAssignmentsAsync();
+            assignmentRows = assignments.Select(x => new SectionAssignmentRow
+            {
+                SectionId = x.SectionId,
+                ClassName = x.ClassName,
+                SectionName = x.SectionName,
+                SelectedTeacherId = x.TeacherId ?? 0
+            }).ToList();
+
+            var teachers = await TeacherAssignmentService.GetTeachersAsync();
+            teacherRows = [];
+
+            foreach (var teacher in teachers)
+            {
+                string? email = null;
+                if (!string.IsNullOrWhiteSpace(teacher.UserId))
+                {
+                    email = (await UserManager.FindByIdAsync(teacher.UserId))?.Email;
+                }
+
+                teacherRows.Add(new TeacherDisplayRow(
+                    teacher.Id,
+                    teacher.EmployeeCode,
+                    teacher.FullName,
+                    email,
+                    teacher.IsActive,
+                    teacher.AssignedSections));
+            }
+
+            teacherUsers = [];
+            var users = await UserManager.Users.OrderBy(x => x.Email).ToListAsync();
+            foreach (var user in users)
+            {
+                if (await UserManager.IsInRoleAsync(user, "Teacher"))
+                {
+                    teacherUsers.Add(user);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SaveAssignmentAsync(SectionAssignmentRow row)
+    {
+        try
+        {
+            await TeacherAssignmentService.AssignSectionTeacherAsync(
+                row.SectionId,
+                row.SelectedTeacherId > 0 ? row.SelectedTeacherId : null);
+            Toast.Success("Section assignment saved.");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task LinkUserAsync()
+    {
+        if (string.IsNullOrWhiteSpace(linkUserId))
+        {
+            Toast.Error("Select a user.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(linkFirstName) || string.IsNullOrWhiteSpace(linkLastName))
+        {
+            Toast.Error("Enter first and last name.");
+            return;
+        }
+
+        try
+        {
+            await TeacherAssignmentService.EnsureTeacherProfileAsync(linkUserId, linkFirstName, linkLastName);
+            Toast.Success("Teacher profile linked.");
+            linkUserId = string.Empty;
+            linkFirstName = string.Empty;
+            linkLastName = string.Empty;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private sealed class SectionAssignmentRow
+    {
+        public int SectionId { get; init; }
+        public string ClassName { get; init; } = string.Empty;
+        public string SectionName { get; init; } = string.Empty;
+        public int SelectedTeacherId { get; set; }
+    }
+
+    private sealed record TeacherDisplayRow(
+        int Id,
+        string EmployeeCode,
+        string FullName,
+        string? UserEmail,
+        bool IsActive,
+        IReadOnlyList<string> AssignedSections);
+}

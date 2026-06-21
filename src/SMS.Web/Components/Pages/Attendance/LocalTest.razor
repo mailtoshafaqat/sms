@@ -1,0 +1,468 @@
+@page "/attendance/local-test"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
+@using SMS.Application.DTOs
+@using SMS.Application.Interfaces
+@using SMS.Domain.Enums
+@using SMS.Web.Services
+@inject IStudentService StudentService
+@using Microsoft.Extensions.Options
+@using SMS.Web.Configuration
+@inject ILocalBiometricService LocalBiometricService
+@inject IOptions<AppBrandingOptions> BrandingOptions
+@inject IJSRuntime Js
+@inject ToastService Toast
+@implements IAsyncDisposable
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+
+<PageTitle>Local Biometric Test</PageTitle>
+
+<h1>Local Biometric Test</h1>
+
+<div class="card">
+    <h3>How it works</h3>
+    <ol>
+        <li><strong>One-time enrollment:</strong> select a student, then enroll face (webcam) and/or fingerprint (Windows Hello).</li>
+        <li><strong>Daily attendance:</strong> student stands in front of the camera or scans finger — no manual IN/OUT needed.</li>
+        <li><strong>First scan of the day</strong> marks <strong>IN</strong> (Present or Late based on school start + grace time).</li>
+        <li><strong>Second scan</strong> marks <strong>OUT</strong>.</li>
+    </ol>
+    <p class="hint">Configure start time, grace minutes, and end time under Settings → School.</p>
+</div>
+
+@if (!moduleReady)
+{
+    <p>Loading biometric module...</p>
+}
+else
+{
+    <div class="card form-grid">
+        <label>
+            Student (for enrollment only)
+            <InputSelect @bind-Value="selectedStudentId">
+                <option value="0">Select student</option>
+                @foreach (var student in students)
+                {
+                    <option value="@student.Id">@student.FullName (@student.RollNumber)</option>
+                }
+            </InputSelect>
+        </label>
+    </div>
+
+    <div class="actions">
+        <button class="btn" type="button" @onclick="() => activeTab = Tab.Face" disabled="@(activeTab == Tab.Face)">Face (Webcam)</button>
+        <button class="btn btn-secondary" type="button" @onclick="() => activeTab = Tab.Fingerprint" disabled="@(activeTab == Tab.Fingerprint)">Fingerprint (Windows Hello)</button>
+    </div>
+
+    @if (activeTab == Tab.Face)
+    {
+        <div class="card">
+            <h3>Face Gate</h3>
+            <p class="hint">
+                <strong>Enroll Face</strong> — one-time setup for the selected student.
+                <strong>Manual Scan Once</strong> — test a single IN/OUT without gate mode.
+                <strong>Start Auto Scan</strong> — same as the real gate kiosk (continuous matching).
+            </p>
+            <video id="local-face-video" autoplay playsinline muted style="width: 100%; max-width: 480px; background: #111; border-radius: 8px;"></video>
+            @if (isBusy)
+            {
+                <p class="hint gate-status-inline">Working… keep looking at the camera.</p>
+            }
+            else if (!string.IsNullOrWhiteSpace(faceStatus))
+            {
+                <p class="gate-status-inline @(faceStatusIsError ? "gate-status-error" : "gate-status-ok")">@faceStatus</p>
+            }
+            <div class="actions">
+                <button class="btn" type="button" @onclick="StartCameraAsync" disabled="@isBusy">Start Camera</button>
+                <button class="btn btn-secondary" type="button" @onclick="StopCameraAsync" disabled="@isBusy">Stop Camera</button>
+                <button class="btn" type="button" @onclick="EnrollFaceAsync" disabled="@(selectedStudentId == 0 || isBusy)">Enroll Face (one time)</button>
+                <button class="btn @(autoScanEnabled ? "btn-danger" : "")" type="button" @onclick="ToggleAutoScanAsync" disabled="@(!cameraRunning || isBusy)">
+                    @(autoScanEnabled ? "Stop Auto Scan" : "Start Auto Scan (Gate Mode)")
+                </button>
+                <button class="btn btn-secondary" type="button" @onclick="ScanFaceAsync" disabled="@(!cameraRunning || isBusy)">Manual Scan Once</button>
+            </div>
+            @if (autoScanEnabled)
+            {
+                <p class="hint">Gate mode is on — enrolled faces are matched automatically every few seconds.</p>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <h3>Fingerprint Gate (Windows Hello)</h3>
+            <p>Enroll once per student, then tap the sensor for daily IN/OUT attendance.</p>
+            <div class="actions">
+                <button class="btn" type="button" @onclick="EnrollFingerprintAsync" disabled="@(selectedStudentId == 0)">Enroll Fingerprint (one time)</button>
+                <button class="btn" type="button" @onclick="ScanFingerprintAsync">Scan Fingerprint</button>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(enrolledFingerprintId))
+            {
+                <p>Enrolled credential for selected student is ready.</p>
+            }
+        </div>
+    }
+}
+
+@code {
+    private enum Tab { Face, Fingerprint }
+
+    private IJSObjectReference? module;
+    private DotNetObjectReference<LocalTest>? dotNetRef;
+    private IReadOnlyList<StudentListItemDto> students = [];
+    private int selectedStudentId;
+    private Tab activeTab = Tab.Face;
+    private string? faceStatus;
+    private bool faceStatusIsError;
+    private bool isBusy;
+    private string? enrolledFingerprintId;
+    private bool cameraRunning;
+    private bool autoScanEnabled;
+    private bool moduleReady;
+    private int lastAutoScanStudentId;
+    private DateTime lastAutoScanAt = DateTime.MinValue;
+    private readonly SemaphoreSlim scanLock = new(1, 1);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            students = (await StudentService.GetStudentsAsync(pageSize: 100)).Items;
+        }
+        catch (Exception ex)
+        {
+            NotifyError(ex.Message);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || moduleReady)
+        {
+            return;
+        }
+
+        try
+        {
+            module = await Js.InvokeAsync<IJSObjectReference>("import", "./js/local-biometric.js");
+            dotNetRef = DotNetObjectReference.Create(this);
+            moduleReady = true;
+        }
+        catch (Exception ex)
+        {
+            NotifyError($"Failed to load biometric module: {ex.Message}");
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task StartCameraAsync()
+    {
+        await RunJsAsync(async () =>
+        {
+            var js = module!;
+            SetFaceStatus("Loading face models…");
+            await js.InvokeVoidAsync("loadFaceModels");
+            await js.InvokeVoidAsync("startCamera", "local-face-video");
+            cameraRunning = true;
+            SetFaceStatus("Camera ready. Select a student, then click Enroll Face.");
+            Toast.Info("Camera started. You can enroll or test scans now.", "Camera Ready");
+        });
+    }
+
+    private async Task StopCameraAsync()
+    {
+        await RunJsAsync(async () =>
+        {
+            autoScanEnabled = false;
+            await module!.InvokeVoidAsync("stopAutoFaceScan");
+            await module!.InvokeVoidAsync("stopCamera");
+            cameraRunning = false;
+            SetFaceStatus("Camera stopped.");
+            Toast.Info("Camera stopped.");
+        });
+    }
+
+    private async Task ToggleAutoScanAsync()
+    {
+        if (module is null || dotNetRef is null)
+        {
+            NotifyError("Biometric module is not ready.");
+            return;
+        }
+
+        autoScanEnabled = !autoScanEnabled;
+        if (autoScanEnabled)
+        {
+            await module.InvokeVoidAsync("startAutoFaceScan", "local-face-video", dotNetRef, 2500);
+            SetFaceStatus("Gate mode on — first scan = IN, second = OUT.");
+            Toast.Info("Gate mode started. Stand in front of the camera.", "Gate Mode");
+        }
+        else
+        {
+            await module.InvokeVoidAsync("stopAutoFaceScan");
+            SetFaceStatus("Gate mode stopped.");
+            Toast.Info("Gate mode stopped.");
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnFaceDetectedAsync(float[] descriptor)
+    {
+        if (!autoScanEnabled || descriptor.Length == 0)
+        {
+            return;
+        }
+
+        if (!await scanLock.WaitAsync(0))
+        {
+            return;
+        }
+
+        try
+        {
+            var match = await LocalBiometricService.MatchFaceAsync(descriptor);
+            if (match is null)
+            {
+                return;
+            }
+
+            if (match.StudentId == lastAutoScanStudentId &&
+                (DateTime.UtcNow - lastAutoScanAt).TotalSeconds < 8)
+            {
+                return;
+            }
+
+            var result = await LocalBiometricService.ScanByExternalIdAsync(match.ExternalId, BiometricType.Face);
+            if (!result.Success)
+            {
+                return;
+            }
+
+            lastAutoScanStudentId = match.StudentId;
+            lastAutoScanAt = DateTime.UtcNow;
+
+            await InvokeAsync(() =>
+            {
+                var text = $"{match.StudentName} — {result.Message}";
+                SetFaceStatus(text);
+                Toast.Success(text, "Attendance Marked");
+                StateHasChanged();
+            });
+        }
+        finally
+        {
+            scanLock.Release();
+        }
+    }
+
+    private async Task EnrollFaceAsync()
+    {
+        if (selectedStudentId == 0)
+        {
+            NotifyError("Select a student first.");
+            return;
+        }
+
+        if (!cameraRunning)
+        {
+            NotifyError("Start the camera first.");
+            return;
+        }
+
+        isBusy = true;
+        SetFaceStatus("Capturing face… look at the camera and hold still.");
+        StateHasChanged();
+
+        try
+        {
+            await RunJsAsync(async () =>
+            {
+                await module!.InvokeVoidAsync("loadFaceModels");
+                var descriptor = await module!.InvokeAsync<float[]?>("captureFaceDescriptor", "local-face-video");
+                if (descriptor is null || descriptor.Length == 0)
+                {
+                    NotifyError("No face detected. Face the camera in good light and try again.", "Enrollment Failed");
+                    return;
+                }
+
+                var externalId = await LocalBiometricService.EnrollFaceAsync(selectedStudentId, descriptor);
+                var studentName = students.FirstOrDefault(s => s.Id == selectedStudentId)?.FullName ?? "Student";
+                var text = $"{studentName} is enrolled. You can test with Manual Scan or Gate Mode.";
+                SetFaceStatus(text);
+                Toast.Success(text, "Face Enrolled");
+            });
+        }
+        finally
+        {
+            isBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ScanFaceAsync()
+    {
+        if (!cameraRunning)
+        {
+            NotifyError("Start the camera first.");
+            return;
+        }
+
+        isBusy = true;
+        SetFaceStatus("Scanning once…");
+        StateHasChanged();
+
+        try
+        {
+            await RunJsAsync(async () =>
+            {
+                await module!.InvokeVoidAsync("loadFaceModels");
+                var descriptor = await module!.InvokeAsync<float[]?>("captureFaceDescriptor", "local-face-video");
+                if (descriptor is null || descriptor.Length == 0)
+                {
+                    NotifyError("No face detected.");
+                    return;
+                }
+
+                var match = await LocalBiometricService.MatchFaceAsync(descriptor);
+                if (match is null)
+                {
+                    NotifyError("Face not recognized. Enroll this student first.", "Not Recognized");
+                    return;
+                }
+
+                var result = await LocalBiometricService.ScanByExternalIdAsync(match.ExternalId, BiometricType.Face);
+                var text = $"{match.StudentName} — {result.Message}";
+                SetFaceStatus(text, !result.Success);
+                if (result.Success)
+                {
+                    Toast.Success(text, "Attendance Marked");
+                }
+                else
+                {
+                    Toast.Error(text, "Scan Failed");
+                }
+            });
+        }
+        finally
+        {
+            isBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task EnrollFingerprintAsync()
+    {
+        if (selectedStudentId == 0)
+        {
+            NotifyError("Select a student first.");
+            return;
+        }
+
+        var student = students.First(x => x.Id == selectedStudentId);
+        await RunJsAsync(async () =>
+        {
+            var credentialId = await module!.InvokeAsync<string?>(
+                "enrollFingerprint",
+                selectedStudentId,
+                student.FullName,
+                BrandingOptions.Value.ApplicationName);
+            if (string.IsNullOrWhiteSpace(credentialId))
+            {
+                Toast.Info("Fingerprint enrollment cancelled.");
+                return;
+            }
+
+            var externalId = await LocalBiometricService.EnrollFingerprintAsync(selectedStudentId, credentialId);
+            enrolledFingerprintId = credentialId;
+            Toast.Success($"{student.FullName} is enrolled. Touch the sensor when scanning.", "Fingerprint Enrolled");
+        });
+    }
+
+    private async Task ScanFingerprintAsync()
+    {
+        await RunJsAsync(async () =>
+        {
+            var credentialId = await module!.InvokeAsync<string?>("verifyFingerprint", enrolledFingerprintId);
+            if (string.IsNullOrWhiteSpace(credentialId))
+            {
+                Toast.Info("Fingerprint scan cancelled.");
+                return;
+            }
+
+            var match = await LocalBiometricService.MatchFingerprintAsync(credentialId);
+            if (match is null)
+            {
+                NotifyError("Fingerprint not recognized. Enroll this student first.", "Not Recognized");
+                return;
+            }
+
+            var result = await LocalBiometricService.ScanByExternalIdAsync(match.ExternalId, BiometricType.Fingerprint);
+            var text = $"{match.StudentName} — {result.Message}";
+            if (result.Success)
+            {
+                Toast.Success(text, "Attendance Marked");
+            }
+            else
+            {
+                Toast.Error(text, "Scan Failed");
+            }
+        });
+    }
+
+    private async Task RunJsAsync(Func<Task> action)
+    {
+        if (module is null)
+        {
+            NotifyError("Biometric module is not ready.");
+            return;
+        }
+
+        try
+        {
+            await action();
+        }
+        catch (JSException ex)
+        {
+            NotifyError(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            NotifyError(ex.Message);
+        }
+    }
+
+    private void NotifyError(string text, string? title = null)
+    {
+        SetFaceStatus(text, true);
+        Toast.Error(text, title);
+    }
+
+    private void SetFaceStatus(string text, bool error = false)
+    {
+        faceStatus = text;
+        faceStatusIsError = error;
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        dotNetRef?.Dispose();
+
+        if (module is not null)
+        {
+            try
+            {
+                await module.InvokeVoidAsync("stopCamera");
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+
+            await module.DisposeAsync();
+        }
+
+        scanLock.Dispose();
+    }
+}

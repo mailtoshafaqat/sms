@@ -1,0 +1,100 @@
+@page "/login"
+@layout LoginLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Identity
+@using SMS.Infrastructure.Identity
+@using SMS.Web.Components.Layout
+@attribute [AllowAnonymous]
+@inject SignInManager<ApplicationUser> SignInManager
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager Navigation
+
+<PageTitle>Login</PageTitle>
+
+<div class="card login-card">
+    <h2 class="login-card-title">Welcome back</h2>
+    <details class="login-demo-hints">
+        <summary>Demo logins</summary>
+        <ul>
+            <li>Admin: <code>admin@school.local</code> / <code>Admin@123</code></li>
+            <li>Coordinator: <code>coordinator@school.local</code> / <code>Coordinator@123</code></li>
+            <li>Teacher: <code>teacher@school.local</code> / <code>Teacher@123</code></li>
+        </ul>
+    </details>
+
+    @if (!string.IsNullOrWhiteSpace(error))
+    {
+        <div class="alert alert-error">@error</div>
+    }
+
+    <EditForm FormName="login" Model="Input" OnValidSubmit="LoginUserAsync" class="form-grid">
+        <DataAnnotationsValidator />
+        <label>
+            Email
+            <InputText @bind-Value="Input.Email" class="field-input" autocomplete="username" />
+        </label>
+        <label>
+            Password
+            <InputText type="password" @bind-Value="Input.Password" class="field-input" autocomplete="current-password" />
+        </label>
+        <div class="actions">
+            <button class="btn btn-hive" type="submit">Sign In</button>
+        </div>
+    </EditForm>
+</div>
+
+@code {
+    [SupplyParameterFromForm]
+    private LoginModel Input { get; set; } = new();
+
+    [SupplyParameterFromQuery(Name = "error")]
+    private string? QueryError { get; set; }
+
+    private string? error;
+
+    protected override void OnInitialized()
+    {
+        if (string.IsNullOrWhiteSpace(Input.Email))
+        {
+            Input.Email = "admin@school.local";
+        }
+
+        if (QueryError == "invalid")
+        {
+            error = "Invalid email or password.";
+        }
+    }
+
+    private async Task LoginUserAsync()
+    {
+        error = null;
+
+        var user = await UserManager.FindByEmailAsync(Input.Email.Trim());
+        if (user is null || !user.IsActive)
+        {
+            error = "Invalid email or password.";
+            return;
+        }
+
+        var result = await SignInManager.PasswordSignInAsync(
+            Input.Email,
+            Input.Password,
+            isPersistent: true,
+            lockoutOnFailure: false);
+
+        if (result.Succeeded)
+        {
+            Navigation.NavigateTo("/", forceLoad: true);
+            return;
+        }
+
+        error = "Invalid email or password.";
+    }
+
+    private sealed class LoginModel
+    {
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+    }
+}

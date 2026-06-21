@@ -1,0 +1,93 @@
+@page "/attendance/notifications"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using SMS.Application.DTOs
+@using SMS.Application.Interfaces
+@inject IAttendanceNotificationService NotificationService
+@inject ToastService Toast
+@attribute [Authorize(Roles = "Admin,Coordinator")]
+
+<PageTitle>Parent Notifications</PageTitle>
+
+<PageIntro Title="Parent Notifications" Subtitle="Absent and late alerts queued for WhatsApp. Open each link to send via WhatsApp Web (no API required)." />
+
+<div class="card toolbar-card">
+    <InputDate @bind-Value="selectedDate" class="field-input toolbar-field" />
+    <button class="btn btn-icon" @onclick="LoadAsync">
+        <AppIcon Name="load" />
+        <span>Load</span>
+    </button>
+</div>
+
+<div class="card">
+  @if (notifications.Count == 0)
+  {
+      <p class="hint">No notifications for this date. They are created when students are marked absent (end of day) or late (gate scan).</p>
+  }
+  else
+  {
+      <div class="table-responsive">
+          <table>
+              <thead>
+                  <tr>
+                      <th>Student</th>
+                      <th>Class</th>
+                      <th>Type</th>
+                      <th>Phone</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                  </tr>
+              </thead>
+              <tbody>
+                  @foreach (var item in notifications)
+                  {
+                      <tr>
+                          <td>@item.StudentName</td>
+                          <td>@item.ClassName</td>
+                          <td>@item.NotificationType</td>
+                          <td>@item.RecipientPhone</td>
+                          <td>@(item.IsSent ? "Sent" : "Pending")</td>
+                          <td>
+                              <div class="table-actions">
+                                  @if (!string.IsNullOrWhiteSpace(item.WhatsAppUrl))
+                                  {
+                                      <a class="btn btn-secondary btn-icon" href="@item.WhatsAppUrl" target="_blank" rel="noopener">
+                                          <AppIcon Name="gate" />
+                                          <span>WhatsApp</span>
+                                      </a>
+                                  }
+                                  @if (!item.IsSent)
+                                  {
+                                      <button type="button" class="btn btn-icon" @onclick="() => MarkSentAsync(item.Id)">
+                                          <AppIcon Name="success" />
+                                          <span>Mark sent</span>
+                                      </button>
+                                  }
+                              </div>
+                          </td>
+                      </tr>
+                  }
+              </tbody>
+          </table>
+      </div>
+  }
+</div>
+
+@code {
+    private DateTime selectedDate = DateTime.Today;
+    private IReadOnlyList<AttendanceNotificationDto> notifications = [];
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        notifications = await NotificationService.GetNotificationsAsync(DateOnly.FromDateTime(selectedDate));
+    }
+
+    private async Task MarkSentAsync(int id)
+    {
+        await NotificationService.MarkSentAsync(id);
+        Toast.Success("Marked as sent.");
+        await LoadAsync();
+    }
+}

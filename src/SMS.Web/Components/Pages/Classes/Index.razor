@@ -1,0 +1,520 @@
+@page "/classes"
+@rendermode InteractiveServer
+@using SMS.Application.DTOs
+@using SMS.Application.Interfaces
+@inject IClassService ClassService
+@inject ToastService Toast
+@inject ConfirmDialogService ConfirmDialog
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Classes</PageTitle>
+
+<PageIntro Title="Classes & Sections" Subtitle="Manage your school structure in one tree — expand a class to see its sections, then add, edit, or reorder.">
+    <button type="button" class="btn btn-icon" data-tooltip="Add a new class" @onclick="StartAddClass">
+        <AppIcon Name="add" />
+        <span>Add Class</span>
+    </button>
+</PageIntro>
+
+<div class="class-tree-layout">
+    <div class="card class-tree-card">
+        <div class="class-tree-toolbar">
+            <input class="field-input class-tree-search" @bind="searchText" @bind:event="oninput" @bind:after="OnSearchChanged" placeholder="Search class or section..." />
+            <button type="button" class="btn btn-secondary btn-icon" @onclick="ExpandAll">
+                <AppIcon Name="chevron-down" />
+                <span>Expand all</span>
+            </button>
+            <button type="button" class="btn btn-secondary btn-icon" @onclick="CollapseAll">
+                <AppIcon Name="chevron-right" />
+                <span>Collapse all</span>
+            </button>
+        </div>
+
+        @if (isLoading)
+        {
+            <p class="hint">Loading classes...</p>
+        }
+        else if (!filteredTree.Any())
+        {
+            <div class="empty-state compact">
+                <AppIcon Name="classes" />
+                <p>@(string.IsNullOrWhiteSpace(searchText) ? "No classes yet. Use Add Class to get started." : "No classes or sections match your search.")</p>
+            </div>
+        }
+        else
+        {
+            <ul class="class-tree" role="tree">
+                @foreach (var node in filteredTree)
+                {
+                    var cls = node.Class;
+                    var isExpanded = expandedClassIds.Contains(cls.Id);
+                    var isClassSelected = selectedClassId == cls.Id && editorMode is EditorMode.EditClass or EditorMode.AddSection;
+                    <li @key="cls.Id" class="class-tree-item" role="treeitem" aria-expanded="@isExpanded">
+                        <div class="class-tree-row class-node @(isClassSelected ? "selected" : "") @(!cls.IsActive ? "inactive" : "")">
+                            <button type="button" class="tree-toggle" @onclick="() => ToggleExpand(cls.Id)" aria-label="@(isExpanded ? "Collapse" : "Expand")">
+                                <AppIcon Name="@(isExpanded ? "chevron-down" : "chevron-right")" />
+                            </button>
+                            <button type="button" class="tree-label" @onclick="() => SelectClass(cls)">
+                                <AppIcon Name="classes" CssClass="tree-icon" />
+                                <span class="tree-title">@cls.Name</span>
+                                <span class="tree-meta">@node.Sections.Count section@(node.Sections.Count == 1 ? "" : "s") · @cls.StudentCount student@(cls.StudentCount == 1 ? "" : "s")</span>
+                            </button>
+                            <span class="status-badge @(cls.IsActive ? "status-connected" : "status-disconnected")">
+                                @(cls.IsActive ? "Active" : "Inactive")
+                            </span>
+                            <div class="tree-actions">
+                                <button type="button" class="btn btn-secondary btn-icon-only" data-tooltip="Move class up" disabled="@(!cls.CanMoveUp)" @onclick="() => MoveClassAsync(cls, moveUp: true)">
+                                    <AppIcon Name="previous" />
+                                </button>
+                                <button type="button" class="btn btn-secondary btn-icon-only" data-tooltip="Move class down" disabled="@(!cls.CanMoveDown)" @onclick="() => MoveClassAsync(cls, moveUp: false)">
+                                    <AppIcon Name="next" />
+                                </button>
+                                <button type="button" class="btn btn-secondary btn-icon-only" data-tooltip="Edit class" @onclick="() => StartEditClass(cls)">
+                                    <AppIcon Name="edit" />
+                                </button>
+                                <button type="button" class="btn btn-secondary btn-icon-only" data-tooltip="Add section" @onclick="() => StartAddSection(cls)">
+                                    <AppIcon Name="add" />
+                                </button>
+                                <button type="button" class="btn btn-secondary btn-icon-only" data-tooltip="@(cls.IsActive ? "Deactivate class" : "Reactivate class")" @onclick="() => ToggleClassActiveAsync(cls)">
+                                    <AppIcon Name="@(cls.IsActive ? "cancel" : "refresh")" />
+                                </button>
+                                <button type="button" class="btn btn-danger btn-icon-only" data-tooltip="Delete class" @onclick="() => DeleteClassAsync(cls)">
+                                    <AppIcon Name="delete" />
+                                </button>
+                            </div>
+                        </div>
+
+                        @if (isExpanded)
+                        {
+                            <ul class="class-tree-children" role="group">
+                                @if (node.Sections.Count == 0)
+                                {
+                                    <li class="class-tree-empty-child">
+                                        <span class="hint">No sections yet.</span>
+                                        <button type="button" class="btn btn-secondary btn-icon" @onclick="() => StartAddSection(cls)">
+                                            <AppIcon Name="add" />
+                                            <span>Add section</span>
+                                        </button>
+                                    </li>
+                                }
+                                else
+                                {
+                                    @foreach (var sec in node.Sections)
+                                    {
+                                        var isSectionSelected = selectedSectionId == sec.Id && editorMode == EditorMode.EditSection;
+                                        <li @key="sec.Id" class="class-tree-row section-node @(isSectionSelected ? "selected" : "") @(!sec.IsActive ? "inactive" : "")" role="treeitem">
+                                            <span class="tree-spacer"></span>
+                                            <button type="button" class="tree-label" @onclick="() => StartEditSection(sec)">
+                                                <span class="tree-title">@sec.SectionName</span>
+                                                <span class="tree-meta">@sec.StudentCount student@(sec.StudentCount == 1 ? "" : "s")@(sec.ClassTeacherName is not null ? $" · {sec.ClassTeacherName}" : "")</span>
+                                            </button>
+                                            <span class="status-badge @(sec.IsActive ? "status-connected" : "status-disconnected")">
+                                                @(sec.IsActive ? "Active" : "Inactive")
+                                            </span>
+                                            <div class="tree-actions">
+                                                <button type="button" class="btn btn-secondary btn-icon-only" data-tooltip="Move section up" disabled="@(!sec.CanMoveUp)" @onclick="() => MoveSectionAsync(sec, moveUp: true)">
+                                                    <AppIcon Name="previous" />
+                                                </button>
+                                                <button type="button" class="btn btn-secondary btn-icon-only" data-tooltip="Move section down" disabled="@(!sec.CanMoveDown)" @onclick="() => MoveSectionAsync(sec, moveUp: false)">
+                                                    <AppIcon Name="next" />
+                                                </button>
+                                                <button type="button" class="btn btn-secondary btn-icon-only" data-tooltip="Edit section" @onclick="() => StartEditSection(sec)">
+                                                    <AppIcon Name="edit" />
+                                                </button>
+                                                <button type="button" class="btn btn-secondary btn-icon-only" data-tooltip="@(sec.IsActive ? "Deactivate section" : "Reactivate section")" @onclick="() => ToggleSectionActiveAsync(sec)">
+                                                    <AppIcon Name="@(sec.IsActive ? "cancel" : "refresh")" />
+                                                </button>
+                                                <button type="button" class="btn btn-danger btn-icon-only" data-tooltip="Delete section" @onclick="() => DeleteSectionAsync(sec)">
+                                                    <AppIcon Name="delete" />
+                                                </button>
+                                            </div>
+                                        </li>
+                                    }
+                                }
+                            </ul>
+                        }
+                    </li>
+                }
+            </ul>
+        }
+
+        <p class="hint class-tree-hint">Use arrow buttons to reorder. Class order affects dropdowns school-wide; section order applies within each class.</p>
+    </div>
+
+    <div class="card class-editor-card">
+        <h3>@EditorTitle</h3>
+        @if (editorMode == EditorMode.None)
+        {
+            <p class="hint">Select a class or section in the tree, or click <strong>Add Class</strong> to create a new one.</p>
+        }
+        else
+        {
+            <div class="stack-form">
+                @if (editorMode is EditorMode.AddSection or EditorMode.EditSection)
+                {
+                    <label class="stack-form-field">
+                        <span class="field-label">Class</span>
+                        <input value="@EditorClassName" disabled />
+                    </label>
+                }
+
+                <label class="stack-form-field">
+                    <span class="field-label">@EditorFieldLabel</span>
+                    <input @bind="editorName" placeholder="@EditorPlaceholder" autocomplete="off" />
+                </label>
+
+                <div class="stack-form-actions">
+                    <button type="button" class="btn btn-icon stack-form-submit" @onclick="SaveEditorAsync">
+                        <AppIcon Name="save" />
+                        <span>Save</span>
+                    </button>
+                    <button type="button" class="btn btn-secondary" @onclick="CancelEditor">Cancel</button>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private enum EditorMode { None, AddClass, EditClass, AddSection, EditSection }
+
+    private List<ClassTreeNode> tree = [];
+    private List<ClassTreeNode> filteredTree = [];
+    private HashSet<int> expandedClassIds = [];
+    private string searchText = string.Empty;
+    private bool isLoading = true;
+
+    private EditorMode editorMode = EditorMode.None;
+    private int? editingClassId;
+    private int? editingSectionId;
+    private int selectedClassId;
+    private int selectedSectionId;
+    private string editorName = string.Empty;
+    private string EditorClassName => tree.FirstOrDefault(x => x.Class.Id == selectedClassId)?.Class.Name ?? string.Empty;
+
+    private string EditorTitle => editorMode switch
+    {
+        EditorMode.AddClass => "Add Class",
+        EditorMode.EditClass => "Edit Class",
+        EditorMode.AddSection => "Add Section",
+        EditorMode.EditSection => "Edit Section",
+        _ => "Details"
+    };
+
+    private string EditorFieldLabel => editorMode is EditorMode.AddSection or EditorMode.EditSection ? "Section name" : "Class name";
+    private string EditorPlaceholder => editorMode is EditorMode.AddSection or EditorMode.EditSection ? "e.g. A" : "e.g. Class 10";
+
+    private record ClassTreeNode(ClassRoomDto Class, IReadOnlyList<SectionDto> Sections);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        var classTree = await ClassService.GetClassTreeAsync();
+        var sectionsByClass = classTree.Sections
+            .GroupBy(x => x.ClassRoomId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<SectionDto>)g.ToList());
+
+        tree = classTree.Classes
+            .Select(cls => new ClassTreeNode(cls, sectionsByClass.GetValueOrDefault(cls.Id, [])))
+            .ToList();
+
+        RebuildFilteredTree();
+        isLoading = false;
+    }
+
+    private void RebuildFilteredTree()
+    {
+        if (string.IsNullOrWhiteSpace(searchText))
+        {
+            filteredTree = tree;
+            return;
+        }
+
+        var term = searchText.Trim();
+        filteredTree = tree
+            .Select(node =>
+            {
+                var classMatch = node.Class.Name.Contains(term, StringComparison.OrdinalIgnoreCase);
+                var matchingSections = node.Sections
+                    .Where(s => s.SectionName.Contains(term, StringComparison.OrdinalIgnoreCase)
+                                || s.ClassName.Contains(term, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                if (classMatch)
+                {
+                    return node;
+                }
+
+                if (matchingSections.Count == 0)
+                {
+                    return null;
+                }
+
+                return node with { Sections = matchingSections };
+            })
+            .Where(x => x is not null)
+            .Select(x => x!)
+            .ToList();
+    }
+
+    private void ToggleExpand(int classId)
+    {
+        if (!expandedClassIds.Remove(classId))
+        {
+            expandedClassIds.Add(classId);
+        }
+    }
+
+    private void ExpandAll() => expandedClassIds = tree.Select(x => x.Class.Id).ToHashSet();
+
+    private void CollapseAll() => expandedClassIds.Clear();
+
+    private void OnSearchChanged()
+    {
+        RebuildFilteredTree();
+
+        if (string.IsNullOrWhiteSpace(searchText))
+        {
+            return;
+        }
+
+        foreach (var node in filteredTree)
+        {
+            expandedClassIds.Add(node.Class.Id);
+        }
+    }
+
+    private void SelectClass(ClassRoomDto cls)
+    {
+        selectedClassId = cls.Id;
+        expandedClassIds.Add(cls.Id);
+    }
+
+    private void StartAddClass()
+    {
+        editorMode = EditorMode.AddClass;
+        editingClassId = null;
+        editingSectionId = null;
+        editorName = string.Empty;
+    }
+
+    private void StartEditClass(ClassRoomDto cls)
+    {
+        editorMode = EditorMode.EditClass;
+        editingClassId = cls.Id;
+        editingSectionId = null;
+        selectedClassId = cls.Id;
+        editorName = cls.Name;
+        expandedClassIds.Add(cls.Id);
+    }
+
+    private void StartAddSection(ClassRoomDto cls)
+    {
+        editorMode = EditorMode.AddSection;
+        editingClassId = null;
+        editingSectionId = null;
+        selectedClassId = cls.Id;
+        editorName = string.Empty;
+        expandedClassIds.Add(cls.Id);
+    }
+
+    private void StartEditSection(SectionDto sec)
+    {
+        editorMode = EditorMode.EditSection;
+        editingClassId = null;
+        editingSectionId = sec.Id;
+        selectedClassId = sec.ClassRoomId;
+        selectedSectionId = sec.Id;
+        editorName = sec.SectionName;
+        expandedClassIds.Add(sec.ClassRoomId);
+    }
+
+    private void CancelEditor()
+    {
+        editorMode = EditorMode.None;
+        editingClassId = null;
+        editingSectionId = null;
+        editorName = string.Empty;
+    }
+
+    private async Task SaveEditorAsync()
+    {
+        if (string.IsNullOrWhiteSpace(editorName))
+        {
+            Toast.Error($"Enter a {EditorFieldLabel.ToLowerInvariant()}.");
+            return;
+        }
+
+        try
+        {
+            switch (editorMode)
+            {
+                case EditorMode.AddClass:
+                    await ClassService.SaveClassAsync(editorName);
+                    Toast.Success("Class added.");
+                    break;
+                case EditorMode.EditClass when editingClassId is > 0:
+                    await ClassService.SaveClassAsync(editorName, editingClassId);
+                    Toast.Success("Class updated.");
+                    break;
+                case EditorMode.AddSection when selectedClassId > 0:
+                    await ClassService.SaveSectionAsync(selectedClassId, editorName);
+                    Toast.Success("Section added.");
+                    expandedClassIds.Add(selectedClassId);
+                    break;
+                case EditorMode.EditSection when editingSectionId is > 0:
+                    await ClassService.SaveSectionAsync(selectedClassId, editorName, editingSectionId);
+                    Toast.Success("Section updated.");
+                    break;
+                default:
+                    Toast.Error("Nothing to save.");
+                    return;
+            }
+
+            CancelEditor();
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task MoveClassAsync(ClassRoomDto cls, bool moveUp)
+    {
+        try
+        {
+            await ClassService.MoveClassAsync(cls.Id, moveUp);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task MoveSectionAsync(SectionDto sec, bool moveUp)
+    {
+        try
+        {
+            await ClassService.MoveSectionAsync(sec.Id, moveUp);
+            expandedClassIds.Add(sec.ClassRoomId);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task ToggleClassActiveAsync(ClassRoomDto cls)
+    {
+        var message = cls.IsActive
+            ? $"Deactivate {cls.Name} and all its sections? They will be hidden from new student enrollment."
+            : $"Reactivate {cls.Name} and all its sections?";
+
+        if (!await ConfirmDialog.ConfirmAsync(
+                cls.IsActive ? "Deactivate class" : "Reactivate class",
+                message,
+                cls.IsActive ? "Deactivate" : "Reactivate",
+                "Cancel"))
+        {
+            return;
+        }
+
+        try
+        {
+            await ClassService.SetClassActiveAsync(cls.Id, !cls.IsActive);
+            Toast.Success(cls.IsActive ? "Class deactivated." : "Class reactivated.");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task ToggleSectionActiveAsync(SectionDto sec)
+    {
+        var label = $"{sec.ClassName}-{sec.SectionName}";
+        var message = sec.IsActive
+            ? sec.StudentCount > 0
+                ? $"Deactivate {label}? Its {sec.StudentCount} enrolled student(s) will remain, but this section will be hidden from new enrollments."
+                : $"Deactivate {label}? It will be hidden from new student enrollment."
+            : $"Reactivate {label}?";
+
+        if (!await ConfirmDialog.ConfirmAsync(
+                sec.IsActive ? "Deactivate section" : "Reactivate section",
+                message,
+                sec.IsActive ? "Deactivate" : "Reactivate",
+                "Cancel"))
+        {
+            return;
+        }
+
+        try
+        {
+            await ClassService.SetSectionActiveAsync(sec.Id, !sec.IsActive);
+            Toast.Success(sec.IsActive ? "Section deactivated." : "Section reactivated.");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task DeleteClassAsync(ClassRoomDto cls)
+    {
+        var warning = cls.StudentCount > 0
+            ? $"Delete {cls.Name}? It has {cls.StudentCount} enrolled student(s) and cannot be removed until they are reassigned."
+            : $"Delete {cls.Name} and all its unused sections? This cannot be undone.";
+
+        if (!await ConfirmDialog.ConfirmAsync("Delete class", warning, "Delete", "Cancel"))
+        {
+            return;
+        }
+
+        try
+        {
+            await ClassService.DeleteClassAsync(cls.Id);
+            Toast.Success("Class deleted.");
+            CancelEditor();
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task DeleteSectionAsync(SectionDto sec)
+    {
+        var label = $"{sec.ClassName}-{sec.SectionName}";
+        var warning = sec.StudentCount > 0
+            ? $"Delete {label}? It has {sec.StudentCount} enrolled student(s). Reassign them first or deactivate instead."
+            : $"Delete {label}? This cannot be undone.";
+
+        if (!await ConfirmDialog.ConfirmAsync("Delete section", warning, "Delete", "Cancel"))
+        {
+            return;
+        }
+
+        try
+        {
+            await ClassService.DeleteSectionAsync(sec.Id);
+            Toast.Success("Section deleted.");
+            CancelEditor();
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+}

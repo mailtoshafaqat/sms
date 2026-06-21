@@ -1,0 +1,219 @@
+@page "/settings/exception-logs"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.JSInterop
+@using SMS.Application.DTOs
+@using SMS.Application.Interfaces
+@inject IExceptionLogService ExceptionLogService
+@inject ToastService Toast
+@inject IJSRuntime Js
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Error Logs</PageTitle>
+
+<PageIntro Title="Error Logs" Subtitle="Application errors are recorded here. Open a row, copy the report, and send it to support when something fails.">
+    <button type="button" class="btn btn-secondary btn-icon" @onclick="LoadAsync">
+        <AppIcon Name="refresh" />
+        <span>Refresh</span>
+    </button>
+</PageIntro>
+
+<div class="card toolbar-card">
+    <input class="field-input toolbar-field" placeholder="Search message, source, user, log #..." value="@search" @oninput="OnSearchInputAsync" />
+    <select class="field-select toolbar-field" @bind="pageSize" @bind:after="OnPageSizeChangedAsync">
+        <option value="10">10 / page</option>
+        <option value="25">25 / page</option>
+        <option value="50">50 / page</option>
+    </select>
+</div>
+
+@if (result is null)
+{
+    <div class="card"><p class="hint">Loading error logs...</p></div>
+}
+else if (result.Items.Count == 0)
+{
+    <div class="card empty-state compact">
+        <AppIcon Name="success" />
+        <p>@(string.IsNullOrWhiteSpace(search) ? "No errors logged yet." : "No errors match your search.")</p>
+    </div>
+}
+else
+{
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Time (UTC)</th>
+                    <th>Source</th>
+                    <th>Message</th>
+                    <th>User</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in result.Items)
+                {
+                    <tr class="@(selectedId == row.Id ? "row-selected" : "")">
+                        <td><code>@row.Id</code></td>
+                        <td>@row.CreatedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                        <td>@row.Source</td>
+                        <td class="error-log-message">@row.Message</td>
+                        <td>@(row.UserEmail ?? "—")</td>
+                        <td>
+                            <button type="button" class="btn btn-secondary btn-icon-only" data-tooltip="View details" @onclick="() => SelectAsync(row.Id)">
+                                <AppIcon Name="info" />
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pagination-bar">
+        <span class="pagination-info">Showing @ResultStart–@ResultEnd of @result.TotalCount</span>
+        <div class="pagination-actions">
+            <button class="btn btn-secondary btn-icon-only" type="button" disabled="@(!result.HasPrevious)" @onclick="PreviousPageAsync">
+                <AppIcon Name="previous" />
+            </button>
+            <span class="pagination-page">Page @result.Page of @Math.Max(result.TotalPages, 1)</span>
+            <button class="btn btn-secondary btn-icon-only" type="button" disabled="@(!result.HasNext)" @onclick="NextPageAsync">
+                <AppIcon Name="next" />
+            </button>
+        </div>
+    </div>
+}
+
+@if (selectedDetail is not null)
+{
+    <div class="card error-log-detail">
+        <div class="card-header-row">
+            <h3>Error log #@selectedDetail.Id</h3>
+            <div class="table-actions">
+                <button type="button" class="btn btn-icon" @onclick="CopyReportAsync">
+                    <AppIcon Name="download" />
+                    <span>Copy report</span>
+                </button>
+                <button type="button" class="btn btn-secondary btn-icon-only" data-tooltip="Close details" @onclick="CloseDetail">
+                    <AppIcon Name="close" />
+                </button>
+            </div>
+        </div>
+        <div class="error-log-meta">
+            <span><strong>Time:</strong> @selectedDetail.CreatedAt.ToString("u")</span>
+            <span><strong>Source:</strong> @selectedDetail.Source</span>
+            <span><strong>User:</strong> @(selectedDetail.UserEmail ?? selectedDetail.UserId ?? "—")</span>
+            @if (selectedDetail.SqlErrorNumber is not null)
+            {
+                <span><strong>SQL:</strong> @selectedDetail.SqlErrorNumber</span>
+            }
+            @if (!string.IsNullOrWhiteSpace(selectedDetail.ConstraintName))
+            {
+                <span><strong>Constraint:</strong> <code>@selectedDetail.ConstraintName</code></span>
+            }
+        </div>
+        <p class="hint">Copy the report below and send it to your developer/support contact.</p>
+        <textarea class="error-log-report" readonly rows="14">@selectedDetail.FullReport</textarea>
+    </div>
+}
+
+@code {
+    private string search = string.Empty;
+    private int page = 1;
+    private int pageSize = 25;
+    private int? selectedId;
+    private PagedResultDto<ExceptionLogListItemDto>? result;
+    private ExceptionLogDetailDto? selectedDetail;
+    private CancellationTokenSource? searchDebounceCts;
+
+    private int ResultStart => result is null || result.TotalCount == 0 ? 0 : ((result.Page - 1) * result.PageSize) + 1;
+    private int ResultEnd => result is null ? 0 : ResultStart + result.Items.Count - 1;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        result = await ExceptionLogService.GetLogsAsync(search, page, pageSize);
+        if (selectedId is > 0)
+        {
+            selectedDetail = await ExceptionLogService.GetLogAsync(selectedId.Value);
+        }
+    }
+
+    private async Task SelectAsync(int id)
+    {
+        selectedId = id;
+        selectedDetail = await ExceptionLogService.GetLogAsync(id);
+    }
+
+    private void CloseDetail()
+    {
+        selectedId = null;
+        selectedDetail = null;
+    }
+
+    private async Task CopyReportAsync()
+    {
+        if (selectedDetail is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await Js.InvokeVoidAsync("navigator.clipboard.writeText", selectedDetail.FullReport);
+            Toast.Success("Error report copied to clipboard.");
+        }
+        catch
+        {
+            Toast.Info("Select the text area and press Ctrl+C to copy.");
+        }
+    }
+
+    private async Task OnSearchInputAsync(ChangeEventArgs e)
+    {
+        search = e.Value?.ToString() ?? string.Empty;
+        page = 1;
+        searchDebounceCts?.Cancel();
+        searchDebounceCts = new CancellationTokenSource();
+        var token = searchDebounceCts.Token;
+        try
+        {
+            await Task.Delay(300, token);
+            await LoadAsync();
+        }
+        catch (TaskCanceledException)
+        {
+        }
+    }
+
+    private async Task OnPageSizeChangedAsync()
+    {
+        page = 1;
+        await LoadAsync();
+    }
+
+    private async Task PreviousPageAsync()
+    {
+        if (result?.HasPrevious != true)
+        {
+            return;
+        }
+
+        page--;
+        await LoadAsync();
+    }
+
+    private async Task NextPageAsync()
+    {
+        if (result?.HasNext != true)
+        {
+            return;
+        }
+
+        page++;
+        await LoadAsync();
+    }
+}

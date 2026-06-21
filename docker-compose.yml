@@ -1,0 +1,16 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: sms-sqlserver
+    ports:
+      - "14331:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Password123!"
+    volumes:
+      - sms-data:/var/opt/mssql/data
+      - ./src/SMS.Web/App_Data/backups:/var/opt/mssql/backup
+    restart: unless-stopped
+
+volumes:
+  sms-data:

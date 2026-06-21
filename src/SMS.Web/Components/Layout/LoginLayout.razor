@@ -1,0 +1,33 @@
+@inherits LayoutComponentBase
+@using Microsoft.Extensions.Options
+@using SMS.Web.Configuration
+@inject IOptions<AppBrandingOptions> BrandingOptions
+
+<div class="login-shell hive-theme">
+    <div class="login-hive-bg" aria-hidden="true"></div>
+    <div class="login-hive-float login-hive-float-a" aria-hidden="true"></div>
+    <div class="login-hive-float login-hive-float-b" aria-hidden="true"></div>
+
+    <div class="login-wrap">
+        <aside class="login-art">
+            <LoginSchoolBrand CssClass="login-art-brand"
+                              LargeLogo="true"
+                              ShowSubtitle="true"
+                              Hint="Secure access for teachers and administrators." />
+        </aside>
+
+        <div class="login-panel">
+            <LoginSchoolBrand CssClass="login-mobile-brand"
+                              ShowSubtitle="false"
+                              Hint="Sign in to continue" />
+            @Body
+            <AppFooter CssClass="login-footer" />
+        </div>
+    </div>
+</div>
+
+<div id="blazor-error-ui">
+    An unhandled error has occurred.
+    <a href="" class="reload">Reload</a>
+    <a class="dismiss">Dismiss</a>
+</div>

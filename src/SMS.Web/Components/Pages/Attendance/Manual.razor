@@ -1,0 +1,190 @@
+@page "/attendance/manual"
+@rendermode InteractiveServer
+@using SMS.Application.DTOs
+@using SMS.Application.Interfaces
+@using SMS.Domain.Enums
+@inject IClassService ClassService
+@inject IAttendanceService AttendanceService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ToastService Toast
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Mark Attendance</PageTitle>
+
+<PageIntro Title="Manual Attendance" Subtitle="Pick a class and date, then set each student’s status. Use bulk actions for faster marking." />
+
+<div class="card toolbar-card">
+    <InputSelect @bind-Value="sectionId" class="field-select toolbar-field" disabled="@(!canEdit && rows.Count > 0)">
+        @foreach (var option in sectionOptions)
+        {
+            <option value="@option.SectionId">@option.DisplayName</option>
+        }
+    </InputSelect>
+    <InputDate @bind-Value="selectedDate" class="field-input toolbar-field" />
+    <button class="btn btn-icon" data-tooltip="Load attendance sheet" @onclick="LoadSheetAsync">
+        <AppIcon Name="load" />
+        <span>Load</span>
+    </button>
+    <button class="btn btn-secondary btn-icon" data-tooltip="Save attendance" @onclick="SaveAsync" disabled="@(!canEdit)">
+        <AppIcon Name="save" />
+        <span>Save</span>
+    </button>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(blockReason))
+{
+    <div class="alert alert-info">@blockReason</div>
+}
+
+@if (rows.Count > 0 && canEdit)
+{
+    <div class="card bulk-actions-card">
+        <span class="bulk-actions-label">Bulk mark all students:</span>
+        <button type="button" class="btn btn-secondary btn-icon" @onclick="() => BulkSetStatus(AttendanceStatus.Present)">
+            <AppIcon Name="success" />
+            <span>All present</span>
+        </button>
+        <button type="button" class="btn btn-secondary btn-icon" @onclick="() => BulkSetStatus(AttendanceStatus.Absent)">
+            <AppIcon Name="error" />
+            <span>All absent</span>
+        </button>
+        <button type="button" class="btn btn-secondary btn-icon" @onclick="() => BulkSetStatus(AttendanceStatus.Leave)">
+            <AppIcon Name="info" />
+            <span>All leave</span>
+        </button>
+    </div>
+}
+
+@if (rows.Count == 0)
+{
+    <div class="card empty-state">
+        <AppIcon Name="attendance" />
+        <p>No students in this section, or load the sheet using the buttons above.</p>
+    </div>
+}
+else
+{
+    <div class="table-responsive attendance-sheet">
+        <table>
+            <thead>
+                <tr>
+                    <th>Roll</th>
+                    <th>Student</th>
+                    <th>Status</th>
+                    <th>Remarks</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in rows)
+                {
+                    <tr class="row-status-@GetRowTone(row.Status)">
+                        <td>@row.RollNumber</td>
+                        <td>
+                            <div class="student-cell">
+                                <strong>@row.StudentName</strong>
+                                <AttendanceStatusBadge Status="row.Status" Compact="true" />
+                            </div>
+                        </td>
+                        <td class="cell-status">
+                            <InputSelect @bind-Value="row.Status" class="field-select" disabled="@(!canEdit)">
+                                @foreach (var status in Enum.GetValues<AttendanceStatus>())
+                                {
+                                    <option value="@status">@status</option>
+                                }
+                            </InputSelect>
+                        </td>
+                        <td class="cell-remarks">
+                            <InputText @bind-Value="row.Remarks" class="field-input" placeholder="Optional remarks..." disabled="@(!canEdit)" />
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private IReadOnlyList<ClassSectionOptionDto> sectionOptions = [];
+    private List<ManualAttendanceRowDto> rows = [];
+    private int sectionId;
+    private DateTime selectedDate = DateTime.Today;
+    private bool canEdit = true;
+    private string? blockReason;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var userId = await GetUserIdAsync();
+        sectionOptions = await ClassService.GetSectionOptionsAsync(userId);
+        if (sectionOptions.Count > 0)
+        {
+            sectionId = sectionOptions[0].SectionId;
+            await LoadSheetAsync();
+        }
+    }
+
+    private async Task LoadSheetAsync()
+    {
+        try
+        {
+            var userId = await GetUserIdAsync();
+            var date = DateOnly.FromDateTime(selectedDate);
+            var sheet = await AttendanceService.GetManualAttendanceSheetAsync(sectionId, date, userId);
+            rows = sheet.Rows.ToList();
+            canEdit = sheet.CanEdit;
+            blockReason = sheet.BlockReason;
+        }
+        catch (Exception ex)
+        {
+            rows = [];
+            canEdit = false;
+            blockReason = null;
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!canEdit)
+        {
+            Toast.Error(blockReason ?? "Attendance cannot be edited for this date.");
+            return;
+        }
+
+        try
+        {
+            var userId = await GetUserIdAsync();
+            var date = DateOnly.FromDateTime(selectedDate);
+            await AttendanceService.SaveManualAttendanceAsync(sectionId, date, rows, userId);
+            Toast.Success("Attendance saved.");
+            await LoadSheetAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private void BulkSetStatus(AttendanceStatus status)
+    {
+        foreach (var row in rows)
+        {
+            row.Status = status;
+        }
+    }
+
+    private async Task<string?> GetUserIdAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        return auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    }
+
+    private static string GetRowTone(AttendanceStatus status) => status switch
+    {
+        AttendanceStatus.Present => "present",
+        AttendanceStatus.Late => "late",
+        AttendanceStatus.Absent => "absent",
+        AttendanceStatus.Holiday => "holiday",
+        AttendanceStatus.Leave => "leave",
+        _ => "unmarked"
+    };
+}

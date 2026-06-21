@@ -1,0 +1,127 @@
+@rendermode InteractiveServer
+@using SMS.Web.Services
+@implements IAsyncDisposable
+@inject ToastService ToastService
+
+<div class="toast-container" aria-live="polite" aria-atomic="true">
+    @foreach (var toast in toasts)
+    {
+        <div class="toast-card toast-@toast.Level.ToString().ToLowerInvariant() @(toast.IsLeaving ? "toast-leaving" : null)" role="status">
+            <div class="toast-header">
+                <div class="toast-header-title">
+                    <AppIcon Name="@GetIcon(toast.Level)" />
+                    <strong>@GetTitle(toast)</strong>
+                </div>
+                <button type="button" class="toast-close" aria-label="Dismiss" @onclick="() => Dismiss(toast.Id)">
+                    <AppIcon Name="close" />
+                </button>
+            </div>
+            <div class="toast-body">@toast.Message</div>
+        </div>
+    }
+</div>
+
+@code {
+    private readonly List<ToastViewModel> toasts = [];
+    private readonly Dictionary<Guid, CancellationTokenSource> dismissTimers = new();
+
+    protected override void OnInitialized()
+    {
+        ToastService.OnShow += HandleShow;
+    }
+
+    private void HandleShow(ToastItem toast)
+    {
+        _ = InvokeAsync(() => ShowAsync(toast));
+    }
+
+    private async Task ShowAsync(ToastItem toast)
+    {
+        var viewModel = new ToastViewModel(toast.Id, toast.Message, toast.Level, toast.Title);
+        toasts.Add(viewModel);
+        StateHasChanged();
+
+        var cts = new CancellationTokenSource();
+        dismissTimers[toast.Id] = cts;
+
+        try
+        {
+            await Task.Delay(5000, cts.Token);
+            await DismissWithAnimationAsync(toast.Id);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            dismissTimers.Remove(toast.Id);
+            cts.Dispose();
+        }
+    }
+
+    private void Dismiss(Guid id)
+    {
+        if (dismissTimers.TryGetValue(id, out var cts))
+        {
+            cts.Cancel();
+        }
+
+        _ = DismissWithAnimationAsync(id);
+    }
+
+    private async Task DismissWithAnimationAsync(Guid id)
+    {
+        var toast = toasts.FirstOrDefault(x => x.Id == id);
+        if (toast is null || toast.IsLeaving)
+        {
+            return;
+        }
+
+        toast.IsLeaving = true;
+        StateHasChanged();
+
+        await Task.Delay(250);
+        toasts.RemoveAll(x => x.Id == id);
+        StateHasChanged();
+    }
+
+    private static string GetIcon(ToastLevel level) => level switch
+    {
+        ToastLevel.Error => "error",
+        ToastLevel.Info => "info",
+        _ => "success"
+    };
+
+    private static string GetTitle(ToastViewModel toast) => toast.Title ?? toast.Level switch
+    {
+        ToastLevel.Error => "Error",
+        ToastLevel.Info => "Notice",
+        _ => "Success"
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        ToastService.OnShow -= HandleShow;
+
+        foreach (var cts in dismissTimers.Values)
+        {
+            await cts.CancelAsync();
+            cts.Dispose();
+        }
+
+        dismissTimers.Clear();
+    }
+
+    private sealed class ToastViewModel(Guid id, string message, ToastLevel level, string? title)
+    {
+        public Guid Id { get; } = id;
+
+        public string Message { get; } = message;
+
+        public ToastLevel Level { get; } = level;
+
+        public string? Title { get; } = title;
+
+        public bool IsLeaving { get; set; }
+    }
+}

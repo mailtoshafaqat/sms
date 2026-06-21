@@ -1,0 +1,250 @@
+@page "/students/promote"
+@rendermode InteractiveServer
+@using SMS.Application.DTOs
+@using SMS.Application.Interfaces
+@using SMS.Domain.Enums
+@inject IClassService ClassService
+@inject IStudentPromotionService PromotionService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ToastService Toast
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Coordinator")]
+
+<PageTitle>Promote Students</PageTitle>
+
+<div class="page-header">
+    <h1>Promote Students</h1>
+    <a class="btn btn-secondary btn-icon" href="/students" data-tooltip="Back to student list">
+        <AppIcon Name="back" />
+        <span>Back to Students</span>
+    </a>
+</div>
+
+<div class="card">
+    <h3>How promotion works</h3>
+    <ul class="promotion-help">
+        <li>Classes are ordered by <strong>Display Order</strong> (set when classes are created).</li>
+        <li>Promoting moves students to the <strong>next class</strong> with the same section name when possible (e.g. Class 9-A → Class 10-A).</li>
+        <li>You can override the target section manually if needed.</li>
+        <li>Every promotion is recorded for audit. Future exam-pass automation can use the same process.</li>
+    </ul>
+</div>
+
+<div class="card form-grid">
+    <label>
+        From Section
+        <InputSelect @bind-Value="sectionId" @bind-Value:after="LoadCandidatesAsync">
+            @foreach (var option in sectionOptions)
+            {
+                <option value="@option.SectionId">@option.DisplayName</option>
+            }
+        </InputSelect>
+    </label>
+    <label>
+        Target Section (optional override)
+        <InputSelect @bind-Value="targetSectionId">
+            <option value="0">Auto — next class by display order</option>
+            @foreach (var option in sectionOptions)
+            {
+                <option value="@option.SectionId">@option.DisplayName</option>
+            }
+        </InputSelect>
+    </label>
+    <div class="actions span-2">
+        <button class="btn btn-icon" type="button" data-tooltip="Promote selected students" @onclick="PromoteSelectedAsync" disabled="@(selectedStudentIds.Count == 0)">
+            <AppIcon Name="promote" />
+            <span>Promote Selected</span>
+        </button>
+        <button class="btn btn-secondary btn-icon" type="button" data-tooltip="Promote all eligible students" @onclick="PromoteAllAsync" disabled="@(candidates.Count == 0)">
+            <AppIcon Name="promote" />
+            <span>Promote All</span>
+        </button>
+    </div>
+</div>
+
+@if (candidates.Count == 0)
+{
+    <div class="card">
+        <p>No students in this section.</p>
+    </div>
+}
+else
+{
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th></th>
+                    <th>Code</th>
+                    <th>Name</th>
+                    <th>Roll</th>
+                    <th>Current Class</th>
+                    <th>Next Class</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var student in candidates)
+                {
+                    <tr>
+                        <td>
+                            <input type="checkbox"
+                                   checked="@selectedStudentIds.Contains(student.StudentId)"
+                                   disabled="@(!student.CanPromote)"
+                                   @onchange="(e) => ToggleStudent(student.StudentId, e.Value)" />
+                        </td>
+                        <td>@student.StudentCode</td>
+                        <td>@student.FullName</td>
+                        <td>@student.RollNumber</td>
+                        <td>@student.CurrentClassName-@student.CurrentSectionName</td>
+                        <td>
+                            @if (student.CanPromote)
+                            {
+                                @($"{student.NextClassName}-{student.NextSectionName}")
+                            }
+                            else
+                            {
+                                <span class="hint">No next class configured</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (history.Count > 0)
+{
+    <div class="card">
+        <h3>Recent Promotions</h3>
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Student</th>
+                        <th>From</th>
+                        <th>To</th>
+                        <th>Source</th>
+                        <th>When</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in history)
+                    {
+                        <tr>
+                            <td>@item.StudentName</td>
+                            <td>@item.FromClass</td>
+                            <td>@item.ToClass</td>
+                            <td>@FormatSource(item.Source)</td>
+                            <td>@item.PromotedAt.ToLocalTime().ToString("g")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private IReadOnlyList<ClassSectionOptionDto> sectionOptions = [];
+    private IReadOnlyList<StudentPromotionCandidateDto> candidates = [];
+    private IReadOnlyList<StudentPromotionHistoryDto> history = [];
+    private HashSet<int> selectedStudentIds = [];
+    private int sectionId;
+    private int targetSectionId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var userId = await GetUserIdAsync();
+        sectionOptions = await ClassService.GetSectionOptionsAsync(userId);
+        history = await PromotionService.GetRecentHistoryAsync();
+
+        if (sectionOptions.Count > 0)
+        {
+            sectionId = sectionOptions[0].SectionId;
+            await LoadCandidatesAsync();
+        }
+    }
+
+    private async Task LoadCandidatesAsync()
+    {
+        selectedStudentIds.Clear();
+
+        if (sectionId == 0)
+        {
+            candidates = [];
+            return;
+        }
+
+        candidates = await PromotionService.GetCandidatesAsync(sectionId);
+    }
+
+    private void ToggleStudent(int studentId, object? checkedValue)
+    {
+        if (checkedValue is bool isChecked && isChecked)
+        {
+            selectedStudentIds.Add(studentId);
+        }
+        else
+        {
+            selectedStudentIds.Remove(studentId);
+        }
+    }
+
+    private void SelectAllEligible()
+    {
+        selectedStudentIds = candidates
+            .Where(x => x.CanPromote)
+            .Select(x => x.StudentId)
+            .ToHashSet();
+    }
+
+    private async Task PromoteSelectedAsync() =>
+        await PromoteAsync(selectedStudentIds.ToList());
+
+    private async Task PromoteAllAsync() =>
+        await PromoteAsync(candidates.Where(x => x.CanPromote).Select(x => x.StudentId).ToList());
+
+    private async Task PromoteAsync(IReadOnlyList<int> studentIds)
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var resolvedTarget = targetSectionId == 0 ? (int?)null : targetSectionId;
+
+        var result = await PromotionService.PromoteStudentsAsync(
+            sectionId,
+            studentIds,
+            resolvedTarget,
+            PromotionSource.Manual,
+            userId);
+
+        if (result.PromotedCount > 0)
+        {
+            Toast.Success($"Promoted {result.PromotedCount} student(s). Skipped {result.SkippedCount}.");
+        }
+        else
+        {
+            Toast.Error(result.Messages.FirstOrDefault() ?? $"No students promoted. Skipped {result.SkippedCount}.");
+        }
+
+        foreach (var detail in result.Messages.Skip(1))
+        {
+            Toast.Info(detail);
+        }
+
+        history = await PromotionService.GetRecentHistoryAsync();
+        await LoadCandidatesAsync();
+    }
+
+    private static string FormatSource(PromotionSource source) => source switch
+    {
+        PromotionSource.ExamPassed => "Exam passed",
+        PromotionSource.BulkEndOfYear => "End of year",
+        _ => "Admin manual"
+    };
+
+    private async Task<string?> GetUserIdAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        return auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    }
+}

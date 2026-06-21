@@ -1,0 +1,189 @@
+@page "/settings/academic-years"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using SMS.Application.DTOs
+@using SMS.Application.Interfaces
+@inject IAcademicYearService AcademicYearService
+@inject ToastService Toast
+@inject ConfirmDialogService ConfirmDialog
+@attribute [Authorize(Roles = "Admin,Coordinator")]
+
+<PageTitle>Academic Years</PageTitle>
+
+<PageIntro Title="Academic Years" Subtitle="Define session dates (e.g. 2025–2026). Students are enrolled per year; use Promote Students at year-end." />
+
+<div class="card form-grid">
+    <h3 class="span-2">@(editingId > 0 ? "Edit Year" : "Add Year")</h3>
+    <label>Name <InputText @bind-Value="form.Name" class="field-input" placeholder="2025-2026" /></label>
+    <label>Start Date <InputDate @bind-Value="startDate" class="field-input" /></label>
+    <label>End Date <InputDate @bind-Value="endDate" class="field-input" /></label>
+    <div class="actions span-2">
+        <button type="button" class="btn btn-icon" @onclick="SaveAsync">
+            <AppIcon Name="save" />
+            <span>Save</span>
+        </button>
+        @if (editingId > 0)
+        {
+            <button type="button" class="btn btn-secondary" @onclick="ResetForm">Cancel</button>
+        }
+    </div>
+</div>
+
+<div class="card">
+    <h3>Sessions</h3>
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th>Students</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var year in years)
+                {
+                    <tr>
+                        <td>@year.Name</td>
+                        <td>@year.StartDate.ToString("d")</td>
+                        <td>@year.EndDate.ToString("d")</td>
+                        <td>@year.EnrollmentCount</td>
+                        <td>
+                            @if (year.IsCurrent)
+                            {
+                                <span class="status-badge status-connected">Current</span>
+                            }
+                        </td>
+                        <td>
+                            <div class="table-actions">
+                                @if (!year.IsCurrent)
+                                {
+                                    <button type="button" class="btn btn-secondary btn-icon" @onclick="() => SetCurrentAsync(year.Id)">
+                                        <AppIcon Name="success" />
+                                        <span>Set current</span>
+                                    </button>
+                                }
+                                <button type="button" class="btn btn-secondary btn-icon-only" @onclick="() => Edit(year)">
+                                    <AppIcon Name="edit" />
+                                </button>
+                                @if (year.CanDelete)
+                                {
+                                    <button type="button" class="btn btn-secondary btn-icon-only" @onclick="() => DeleteAsync(year)">
+                                        <AppIcon Name="delete" />
+                                    </button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <p class="hint">At year-end: promote students under Students → Promote, then add the new session and set it as current.</p>
+</div>
+
+@code {
+    private IReadOnlyList<AcademicYearDto> years = [];
+    private AcademicYearFormDto form = new();
+    private int editingId;
+    private DateTime startDate = new(DateTime.Today.Year, 4, 1);
+    private DateTime endDate = new(DateTime.Today.Year + 1, 3, 31);
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync() => years = await AcademicYearService.GetYearsAsync();
+
+    private void Edit(AcademicYearDto year)
+    {
+        editingId = year.Id;
+        form = new AcademicYearFormDto
+        {
+            Id = year.Id,
+            Name = year.Name,
+            StartDate = year.StartDate,
+            EndDate = year.EndDate
+        };
+        startDate = year.StartDate.ToDateTime(TimeOnly.MinValue);
+        endDate = year.EndDate.ToDateTime(TimeOnly.MinValue);
+    }
+
+    private void ResetForm()
+    {
+        editingId = 0;
+        form = new AcademicYearFormDto();
+        startDate = new DateTime(DateTime.Today.Year, 4, 1);
+        endDate = new DateTime(DateTime.Today.Year + 1, 3, 31);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(form.Name))
+        {
+            Toast.Error("Enter a year name.");
+            return;
+        }
+
+        form.StartDate = DateOnly.FromDateTime(startDate);
+        form.EndDate = DateOnly.FromDateTime(endDate);
+        form.Id = editingId;
+
+        try
+        {
+            await AcademicYearService.SaveYearAsync(form);
+            Toast.Success("Academic year saved.");
+            ResetForm();
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task SetCurrentAsync(int yearId)
+    {
+        try
+        {
+            await AcademicYearService.SetCurrentYearAsync(yearId);
+            Toast.Success("Current academic year updated.");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task DeleteAsync(AcademicYearDto year)
+    {
+        var confirmed = await ConfirmDialog.ConfirmAsync(
+            "Delete academic year",
+            $"Delete \"{year.Name}\"? This cannot be undone. Only empty, non-current years can be removed.",
+            "Delete",
+            "Cancel");
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        try
+        {
+            await AcademicYearService.DeleteYearAsync(year.Id);
+            if (editingId == year.Id)
+            {
+                ResetForm();
+            }
+
+            Toast.Success("Academic year deleted.");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+}

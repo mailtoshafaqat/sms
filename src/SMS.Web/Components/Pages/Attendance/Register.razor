@@ -1,0 +1,158 @@
+@page "/attendance/register"
+@rendermode InteractiveServer
+@using System.Globalization
+@using SMS.Application.DTOs
+@using SMS.Application.Interfaces
+@using SMS.Domain.Enums
+@inject IClassService ClassService
+@inject IAttendanceService AttendanceService
+@inject ISchoolService SchoolService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject IJSRuntime Js
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>Monthly Register</PageTitle>
+
+<PageIntro Title="Monthly Register" Subtitle="Download a US Letter attendance sheet (PDF/CSV) or print with the built-in school footer.">
+</PageIntro>
+
+<div class="card toolbar-card no-print">
+    <InputSelect @bind-Value="sectionId" class="field-select toolbar-field">
+        @foreach (var option in sectionOptions)
+        {
+            <option value="@option.SectionId">@option.DisplayName</option>
+        }
+    </InputSelect>
+    <InputNumber @bind-Value="selectedMonth" class="field-input toolbar-field" min="1" max="12" />
+    <InputNumber @bind-Value="selectedYear" class="field-input toolbar-field" min="2020" max="2100" />
+    <button class="btn btn-icon" @onclick="LoadAsync">
+        <AppIcon Name="load" />
+        <span>Load</span>
+    </button>
+    @if (register is not null)
+    {
+        <a class="btn btn-secondary btn-icon" href="@GetExportUrl("pdf")" download>
+            <AppIcon Name="download" />
+            <span>Download PDF</span>
+        </a>
+        <a class="btn btn-secondary btn-icon" href="@GetExportUrl("csv")" download>
+            <AppIcon Name="download" />
+            <span>Download CSV</span>
+        </a>
+        <button class="btn btn-secondary btn-icon" @onclick="PrintAsync">
+            <AppIcon Name="download" />
+            <span>Print</span>
+        </button>
+    }
+</div>
+
+@if (register is not null)
+{
+    <div class="register-sheet" id="monthly-register-print">
+        <div class="register-print-header">
+            <h2 class="register-school-name">@schoolName</h2>
+            <p class="register-title">Monthly Attendance Register — @register.SectionName — @MonthLabel @register.Year</p>
+            <p class="register-meta">
+                Students: <strong>@register.Students.Count</strong>
+                &nbsp;|&nbsp; Days: <strong>@register.Dates.Count</strong>
+                &nbsp;|&nbsp; Working days: <strong>@WorkingDays</strong>
+            </p>
+        </div>
+
+        <table class="register-table">
+            <thead>
+                <tr>
+                    <th>Roll</th>
+                    <th>Student</th>
+                    @foreach (var date in register.Dates)
+                    {
+                        <th class="register-day">@date.Day</th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in register.Students)
+                {
+                    <tr>
+                        <td>@row.RollNumber</td>
+                        <td>@row.StudentName</td>
+                        @foreach (var cell in row.Days)
+                        {
+                            <td class="register-cell @(cell.IsNonWorkingDay ? "off-day" : "")">@GetCellCode(cell.Status)</td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <p class="register-legend">P=Present, A=Absent, L=Late, Lv=Leave, H=Holiday, -=Not marked</p>
+
+        <div class="register-print-footer">
+            <div class="register-footer-line"></div>
+            <div class="register-footer-row">
+                <span>@schoolName</span>
+                <span>US Letter (Landscape) | Students: @register.Students.Count | @MonthLabel @register.Year</span>
+                <span class="register-footer-generated">Generated @DateTime.Now.ToString("dd-MMM-yyyy HH:mm")</span>
+            </div>
+        </div>
+    </div>
+
+    <p class="hint no-print">Tip: Use <strong>Download PDF</strong> for a clean file without browser URL headers. In Print, turn off “Headers and footers” in the dialog.</p>
+}
+
+@code {
+    private IReadOnlyList<ClassSectionOptionDto> sectionOptions = [];
+    private MonthlyRegisterDto? register;
+    private string schoolName = "School";
+    private int sectionId;
+    private int selectedMonth = DateTime.Today.Month;
+    private int selectedYear = DateTime.Today.Year;
+
+    private string MonthLabel => CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(selectedMonth);
+
+    private int WorkingDays => register?.Students.Count > 0
+        ? register.Students[0].Days.Count(x => !x.IsNonWorkingDay)
+        : register?.Dates.Count ?? 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var school = await SchoolService.GetSchoolSettingsAsync();
+        schoolName = school?.Name ?? "School";
+
+        var userId = await GetUserIdAsync();
+        sectionOptions = await ClassService.GetSectionOptionsAsync(userId);
+        if (sectionOptions.Count > 0)
+        {
+            sectionId = sectionOptions[0].SectionId;
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        var userId = await GetUserIdAsync();
+        register = await AttendanceService.GetMonthlyRegisterAsync(sectionId, selectedYear, selectedMonth, userId);
+    }
+
+    private string GetExportUrl(string format) =>
+        Navigation.ToAbsoluteUri($"/attendance/register/export/{format}?sectionId={sectionId}&year={selectedYear}&month={selectedMonth}").ToString();
+
+    private async Task PrintAsync() => await Js.InvokeVoidAsync("print");
+
+    private async Task<string?> GetUserIdAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        return auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    }
+
+    private static string GetCellCode(AttendanceStatus? status) => status switch
+    {
+        AttendanceStatus.Present => "P",
+        AttendanceStatus.Absent => "A",
+        AttendanceStatus.Late => "L",
+        AttendanceStatus.Leave => "Lv",
+        AttendanceStatus.Holiday => "H",
+        _ => "-"
+    };
+}

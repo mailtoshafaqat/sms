@@ -1,0 +1,343 @@
+@page "/students/edit"
+@page "/students/edit/{Id:int}"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using SMS.Application.DTOs
+@using SMS.Application.Interfaces
+@inject IStudentService StudentService
+@inject IClassService ClassService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject ToastService Toast
+@inject ConfirmDialogService ConfirmDialog
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<PageTitle>@(Id.HasValue ? "Edit Student" : "Add Student")</PageTitle>
+
+<div class="page-header">
+    <h1>@(Id.HasValue ? "Edit Student" : "Add Student")</h1>
+    <div class="table-actions">
+        @if (Id is > 0)
+        {
+            <button type="button" class="btn btn-danger btn-icon" data-tooltip="Delete student" @onclick="DeleteAsync">
+                <AppIcon Name="delete" />
+                <span>Delete</span>
+            </button>
+        }
+        <a class="btn btn-secondary btn-icon" href="/students" data-tooltip="Back to student list">
+            <AppIcon Name="back" />
+            <span>Back</span>
+        </a>
+    </div>
+</div>
+
+<div class="card">
+    <EditForm FormName="student-edit" Model="model" OnValidSubmit="SaveAsync" class="form-grid form-grid-2">
+        <fieldset class="form-section span-2">
+            <legend>Basic Information</legend>
+            <div class="form-grid form-grid-2">
+                <label class="form-field">
+                    <span class="field-label">Student Code</span>
+                    <InputText @bind-Value="model.StudentCode" autocomplete="off" />
+                </label>
+                <label class="form-field">
+                    <span class="field-label">Roll Number</span>
+                    <InputText @bind-Value="model.RollNumber" autocomplete="off" />
+                </label>
+                <p class="field-hint field-hint-below">Leave blank to auto-generate (e.g. STU-1-101)</p>
+                <label class="form-field">
+                    <span class="field-label">First Name</span>
+                    <InputText @bind-Value="model.FirstName" autocomplete="given-name" />
+                </label>
+                <label class="form-field">
+                    <span class="field-label">Last Name</span>
+                    <InputText @bind-Value="model.LastName" autocomplete="family-name" />
+                </label>
+                <label class="form-field span-2">
+                    <span class="field-label">Father Name</span>
+                    <InputText @bind-Value="model.FatherName" autocomplete="off" />
+                </label>
+            </div>
+        </fieldset>
+
+        <fieldset class="form-section span-2">
+            <legend>Class &amp; Status</legend>
+            <div class="form-grid form-grid-2 class-status-grid">
+                <label class="form-field">
+                    <span class="field-label">Class / Section</span>
+                    <InputSelect @bind-Value="model.SectionId">
+                        @foreach (var option in sectionOptions)
+                        {
+                            <option value="@option.SectionId">@option.DisplayName</option>
+                        }
+                    </InputSelect>
+                </label>
+                <div class="status-toggle">
+                    <span class="field-label">Status</span>
+                    <label class="checkbox-field">
+                        <InputCheckbox @bind-Value="model.IsActive" />
+                        Active student
+                    </label>
+                </div>
+            </div>
+        </fieldset>
+
+        <fieldset class="form-section span-2">
+            <legend>Contact</legend>
+            <div class="form-grid form-grid-2">
+                <label class="form-field">
+                    <span class="field-label">Phone</span>
+                    <InputText @bind-Value="model.Phone" autocomplete="tel" />
+                </label>
+                <label class="form-field">
+                    <span class="field-label">WhatsApp</span>
+                    <InputText @bind-Value="model.WhatsAppNumber" autocomplete="tel" />
+                </label>
+            </div>
+        </fieldset>
+
+        @if (StudentId > 0)
+        {
+            <AuthorizeView Roles="Admin,Coordinator">
+                <Authorized Context="auth">
+                    <fieldset class="form-section span-2">
+                        <legend>Student Photo</legend>
+                        <div class="photo-upload-row">
+                            @if (!string.IsNullOrWhiteSpace(model.PhotoPath))
+                            {
+                                <img src="@model.PhotoPath" alt="Student photo" class="student-photo-preview" />
+                            }
+                            else
+                            {
+                                <div class="student-photo-placeholder">
+                                    <AppIcon Name="user" />
+                                </div>
+                            }
+
+                            <div class="logo-upload-actions">
+                                <label class="btn btn-secondary btn-icon file-upload-btn" data-tooltip="Upload student photo">
+                                    <AppIcon Name="upload" />
+                                    <span>Choose photo</span>
+                                    <InputFile OnChange="OnPhotoSelectedAsync" accept=".png,.jpg,.jpeg,.webp,.gif" class="file-input-hidden" />
+                                </label>
+                                @if (!string.IsNullOrWhiteSpace(model.PhotoPath))
+                                {
+                                    <button type="button" class="btn btn-danger btn-icon" data-tooltip="Remove student photo" @onclick="RemovePhotoAsync">
+                                        <AppIcon Name="delete" />
+                                        <span>Remove Photo</span>
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                        <p class="hint">PNG, JPG, WEBP, or GIF. Max 2 MB. Shown in the student list.</p>
+                    </fieldset>
+                </Authorized>
+            </AuthorizeView>
+        }
+        else
+        {
+            <AuthorizeView Roles="Admin,Coordinator">
+                <Authorized Context="auth">
+                    <p class="hint span-2">Save the student first, then you can upload a photo.</p>
+                </Authorized>
+            </AuthorizeView>
+        }
+
+        <fieldset class="form-section span-2">
+            <legend>Gate Device IDs (optional)</legend>
+            <p class="hint">
+                These are <strong>manual IDs you assign</strong> — they must match the user number stored on your gate biometric device (ZKTeco finger or face terminal).
+                For testing without a device, enter any unique number (e.g. roll number <code>101</code>) and use <strong>Live Gate → Simulate IN</strong> with the same ID.
+                Leave blank if this student will not use gate scanners yet.
+            </p>
+            <div class="form-grid form-grid-2">
+                <label class="form-field">
+                    <span class="field-label">Fingerprint User ID</span>
+                    <InputText @bind-Value="model.FingerprintUserId" placeholder="Same as device user no., e.g. 101" autocomplete="off" />
+                    <span class="field-hint">For finger scanner at gate</span>
+                </label>
+                <label class="form-field">
+                    <span class="field-label">Face User ID</span>
+                    <InputText @bind-Value="model.FaceUserId" placeholder="Same as device user no., e.g. 101" autocomplete="off" />
+                    <span class="field-hint">For face terminal at gate</span>
+                </label>
+            </div>
+        </fieldset>
+
+        <div class="form-actions span-2">
+            <button class="btn btn-icon" type="submit" data-tooltip="Save student">
+                <AppIcon Name="save" />
+                <span>Save Student</span>
+            </button>
+            <a class="btn btn-secondary btn-icon" href="/students" data-tooltip="Cancel and go back">
+                <AppIcon Name="cancel" />
+                <span>Cancel</span>
+            </a>
+        </div>
+    </EditForm>
+</div>
+
+@code {
+    [Parameter] public int? Id { get; set; }
+
+    private StudentFormDto model = new();
+    private IReadOnlyList<ClassSectionOptionDto> sectionOptions = [];
+
+    private int StudentId => Id ?? model.Id;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var userId = await GetUserIdAsync();
+        sectionOptions = await ClassService.GetSectionOptionsAsync(userId);
+
+        if (Id is > 0)
+        {
+            model = await StudentService.GetStudentAsync(Id.Value) ?? new StudentFormDto();
+        }
+        else if (sectionOptions.Count > 0)
+        {
+            model.SectionId = sectionOptions[0].SectionId;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(model.FirstName) || string.IsNullOrWhiteSpace(model.LastName))
+        {
+            Toast.Error("First name and last name are required.");
+            return;
+        }
+
+        if (model.SectionId <= 0)
+        {
+            Toast.Error("Please select a class and section.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(model.RollNumber))
+        {
+            Toast.Error("Roll number is required.");
+            return;
+        }
+
+        try
+        {
+            var isNew = Id is not > 0;
+            if (Id is > 0)
+            {
+                model.Id = Id.Value;
+            }
+
+            var id = await StudentService.SaveStudentAsync(model);
+            model.Id = id;
+
+            if (isNew)
+            {
+                Toast.Success("Student added. You can upload a photo now.");
+                Navigation.NavigateTo($"/students/edit/{id}");
+            }
+            else
+            {
+                Toast.Success("Student updated.");
+                Navigation.NavigateTo("/students");
+            }
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (Id is not > 0)
+        {
+            return;
+        }
+
+        var confirmed = await ConfirmDialog.ConfirmAsync(
+            "Delete student?",
+            $"Remove {model.FirstName} {model.LastName} from active students? This can be undone only by re-adding the student.",
+            "Delete",
+            "Cancel");
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        try
+        {
+            await StudentService.DeleteStudentAsync(Id.Value);
+            Toast.Success("Student deleted.");
+            Navigation.NavigateTo("/students");
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task<string?> GetUserIdAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        return auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    }
+
+    private async Task OnPhotoSelectedAsync(InputFileChangeEventArgs e)
+    {
+        if (StudentId <= 0)
+        {
+            return;
+        }
+
+        var file = e.File;
+        if (file.Size > 2 * 1024 * 1024)
+        {
+            Toast.Error("Photo must be 2 MB or smaller.");
+            return;
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream(2 * 1024 * 1024);
+            model.PhotoPath = await StudentService.UploadPhotoAsync(StudentId, stream, file.Name);
+            Toast.Success("Photo uploaded.");
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task RemovePhotoAsync()
+    {
+        if (StudentId <= 0 || string.IsNullOrWhiteSpace(model.PhotoPath))
+        {
+            return;
+        }
+
+        var confirmed = await ConfirmDialog.ConfirmAsync(
+            "Remove photo?",
+            "Remove this student's photo?",
+            "Remove",
+            "Cancel");
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        try
+        {
+            await StudentService.RemovePhotoAsync(StudentId);
+            model.PhotoPath = null;
+            Toast.Success("Photo removed.");
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+}

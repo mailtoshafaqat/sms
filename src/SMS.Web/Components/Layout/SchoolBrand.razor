@@ -1,0 +1,60 @@
+@rendermode InteractiveServer
+@using Microsoft.Extensions.Options
+@using SMS.Application.Interfaces
+@using SMS.Web.Configuration
+@using SMS.Web.Services
+@implements IDisposable
+@inject ISchoolService SchoolService
+@inject IOptions<AppBrandingOptions> BrandingOptions
+@inject SchoolBrandingRefresh BrandingRefresh
+
+<div class="brand">
+    @if (!string.IsNullOrWhiteSpace(logoPath))
+    {
+        <img src="@logoPath" alt="@displayName logo" class="brand-logo" />
+    }
+    <div>
+        <h1>@displayName</h1>
+        <p>@BrandingOptions.Value.ApplicationSubtitle</p>
+    </div>
+</div>
+
+@code {
+    private string displayName = "SMS";
+    private string? logoPath;
+
+    protected override async Task OnInitializedAsync()
+    {
+        BrandingRefresh.Changed += OnBrandingChanged;
+        await LoadAsync();
+    }
+
+    private void OnBrandingChanged() => _ = RefreshFromEventAsync();
+
+    private async Task RefreshFromEventAsync()
+    {
+        await LoadAsync();
+        StateHasChanged();
+    }
+
+    private async Task LoadAsync()
+    {
+        displayName = BrandingOptions.Value.ApplicationName;
+
+        var school = await SchoolService.GetSchoolSettingsAsync();
+        if (school is not null)
+        {
+            if (!string.IsNullOrWhiteSpace(school.Name))
+            {
+                displayName = school.Name;
+            }
+
+            logoPath = school.LogoPath;
+        }
+    }
+
+    public void Dispose()
+    {
+        BrandingRefresh.Changed -= OnBrandingChanged;
+    }
+}

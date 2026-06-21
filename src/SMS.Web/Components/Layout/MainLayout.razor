@@ -1,0 +1,44 @@
+@inherits LayoutComponentBase
+@using Microsoft.Extensions.Options
+@using SMS.Web.Configuration
+@inject IOptions<AppBrandingOptions> BrandingOptions
+
+<input type="checkbox" id="sidebar-toggle" class="sidebar-toggle" aria-hidden="true" tabindex="-1" />
+
+<div class="app-shell">
+    <label for="sidebar-toggle" class="sidebar-backdrop" aria-hidden="true"></label>
+
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <SchoolBrand />
+            <label for="sidebar-toggle" class="sidebar-close" aria-label="Close menu">&times;</label>
+        </div>
+        <NavMenu />
+        <div class="sidebar-company-strip">
+            <PoweredByBrand CssClass="sidebar-powered-by" />
+        </div>
+    </aside>
+
+    <main class="content">
+        <header class="topbar">
+            <label for="sidebar-toggle" class="nav-toggle-btn" aria-label="Open menu">
+                <span class="nav-toggle-icon" aria-hidden="true"></span>
+            </label>
+            <div class="topbar-title">@BrandingOptions.Value.ApplicationSubtitle</div>
+            <TopBarActions />
+        </header>
+        <section class="page-body">
+            @Body
+        </section>
+        <AppFooter CssClass="main-footer" />
+    </main>
+</div>
+
+<ToastContainer />
+<ConfirmDialog />
+
+<div id="blazor-error-ui">
+    An unhandled error has occurred.
+    <a href="" class="reload">Reload</a>
+    <a class="dismiss">Dismiss</a>
+</div>

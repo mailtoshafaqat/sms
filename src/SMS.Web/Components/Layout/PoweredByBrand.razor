@@ -1,0 +1,38 @@
+@using Microsoft.Extensions.Options
+@using SMS.Web.Configuration
+@inject IOptions<AppBrandingOptions> BrandingOptions
+
+<div class="powered-by @CssClass">
+    <span class="powered-by-label">@BrandingOptions.Value.PoweredByLabel</span>
+    @if (string.IsNullOrWhiteSpace(BrandingOptions.Value.CompanyWebsite))
+    {
+        <span class="powered-by-mark">
+            <img src="@GetLogoUrl()"
+                 alt="@BrandingOptions.Value.CompanyName logo"
+                 class="powered-by-logo" />
+            <strong>@BrandingOptions.Value.CompanyName</strong>
+        </span>
+    }
+    else
+    {
+        <a class="powered-by-mark powered-by-link"
+           href="@BrandingOptions.Value.CompanyWebsite"
+           target="_blank"
+           rel="noopener">
+            <img src="@GetLogoUrl()"
+                 alt="@BrandingOptions.Value.CompanyName logo"
+                 class="powered-by-logo" />
+            <strong>@BrandingOptions.Value.CompanyName</strong>
+        </a>
+    }
+</div>
+
+@code {
+    [Parameter] public string CssClass { get; set; } = string.Empty;
+
+    private string GetLogoUrl()
+    {
+        var path = BrandingOptions.Value.CompanyLogoPath;
+        return path.Contains('?', StringComparison.Ordinal) ? path : $"{path}?v=hive";
+    }
+}

@@ -1,0 +1,214 @@
+@page "/students"
+@rendermode InteractiveServer
+@using SMS.Application.DTOs
+@using SMS.Application.Interfaces
+@inject IStudentService StudentService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ToastService Toast
+@inject ConfirmDialogService ConfirmDialog
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@implements IDisposable
+
+<PageTitle>Students</PageTitle>
+
+<div class="toolbar">
+    <h1>Students</h1>
+    <div class="toolbar-actions">
+        <input placeholder="Search name, code, roll..." value="@search" @oninput="OnSearchInputAsync" />
+        <select @bind="pageSize" @bind:after="OnPageSizeChangedAsync">
+            <option value="25">25 / page</option>
+            <option value="50">50 / page</option>
+            <option value="100">100 / page</option>
+        </select>
+        <a class="btn btn-icon" href="/students/edit" data-tooltip="Add new student">
+            <AppIcon Name="add" />
+            <span>Add Student</span>
+        </a>
+        <AuthorizeView Roles="Admin,Coordinator">
+            <Authorized>
+                <a class="btn btn-secondary btn-icon" href="/students/promote" data-tooltip="Promote students to next class">
+                    <AppIcon Name="promote" />
+                    <span>Promote</span>
+                </a>
+            </Authorized>
+        </AuthorizeView>
+    </div>
+</div>
+
+@if (result is null)
+{
+    <p>Loading...</p>
+}
+else if (result.Items.Count == 0)
+{
+    <div class="card">
+        <p>No students found@(string.IsNullOrWhiteSpace(search) ? "" : $" for \"{search}\"").</p>
+    </div>
+}
+else
+{
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th></th>
+                    <th>Code</th>
+                    <th>Name</th>
+                    <th>Roll</th>
+                    <th>Class</th>
+                    <th>Phone</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var student in result.Items)
+                {
+                    <tr>
+                        <td>
+                            @if (!string.IsNullOrWhiteSpace(student.PhotoPath))
+                            {
+                                <img src="@student.PhotoPath" alt="" class="student-photo-thumb" />
+                            }
+                            else
+                            {
+                                <span class="student-photo-thumb student-photo-thumb-empty" aria-hidden="true"></span>
+                            }
+                        </td>
+                        <td>@student.StudentCode</td>
+                        <td>@student.FullName</td>
+                        <td>@student.RollNumber</td>
+                        <td>@student.ClassName-@student.SectionName</td>
+                        <td>@student.Phone</td>
+                        <td>
+                            <div class="table-actions">
+                                <a class="btn btn-secondary btn-icon-only" href="/students/edit/@student.Id" data-tooltip="Edit student">
+                                    <AppIcon Name="edit" />
+                                </a>
+                                <button type="button" class="btn btn-danger btn-icon-only" data-tooltip="Delete student" @onclick="() => DeleteAsync(student)">
+                                    <AppIcon Name="delete" />
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pagination-bar">
+        <span class="pagination-info">
+            Showing @ResultStart–@ResultEnd of @result.TotalCount
+        </span>
+        <div class="pagination-actions">
+            <button class="btn btn-secondary btn-icon-only" type="button" disabled="@(!result.HasPrevious)" data-tooltip="Previous page" @onclick="PreviousPageAsync">
+                <AppIcon Name="previous" />
+            </button>
+            <span class="pagination-page">Page @result.Page of @Math.Max(result.TotalPages, 1)</span>
+            <button class="btn btn-secondary btn-icon-only" type="button" disabled="@(!result.HasNext)" data-tooltip="Next page" @onclick="NextPageAsync">
+                <AppIcon Name="next" />
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    private string search = string.Empty;
+    private int page = 1;
+    private int pageSize = 25;
+    private PagedResultDto<StudentListItemDto>? result;
+    private CancellationTokenSource? searchDebounceCts;
+
+    private int ResultStart => result is null || result.TotalCount == 0 ? 0 : ((result.Page - 1) * result.PageSize) + 1;
+    private int ResultEnd => result is null ? 0 : ResultStart + result.Items.Count - 1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        result = await StudentService.GetStudentsAsync(search, page, pageSize, userId);
+    }
+
+    private async Task DeleteAsync(StudentListItemDto student)
+    {
+        var confirmed = await ConfirmDialog.ConfirmAsync(
+            "Delete student?",
+            $"Remove {student.FullName} ({student.StudentCode}) from active students?",
+            "Delete",
+            "Cancel");
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        try
+        {
+            await StudentService.DeleteStudentAsync(student.Id);
+            Toast.Success($"{student.FullName} deleted.");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task OnSearchInputAsync(ChangeEventArgs e)
+    {
+        search = e.Value?.ToString() ?? string.Empty;
+        page = 1;
+
+        searchDebounceCts?.Cancel();
+        searchDebounceCts?.Dispose();
+        searchDebounceCts = new CancellationTokenSource();
+        var token = searchDebounceCts.Token;
+
+        try
+        {
+            await Task.Delay(300, token);
+            await LoadAsync();
+        }
+        catch (TaskCanceledException)
+        {
+        }
+    }
+
+    private async Task OnPageSizeChangedAsync()
+    {
+        page = 1;
+        await LoadAsync();
+    }
+
+    private async Task PreviousPageAsync()
+    {
+        if (result?.HasPrevious != true)
+        {
+            return;
+        }
+
+        page--;
+        await LoadAsync();
+    }
+
+    private async Task NextPageAsync()
+    {
+        if (result?.HasNext != true)
+        {
+            return;
+        }
+
+        page++;
+        await LoadAsync();
+    }
+
+    public void Dispose()
+    {
+        searchDebounceCts?.Cancel();
+        searchDebounceCts?.Dispose();
+    }
+}

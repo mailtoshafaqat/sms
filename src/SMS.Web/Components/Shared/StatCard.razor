@@ -1,0 +1,21 @@
+<div class="stat-card stat-card-@Tone">
+    <div class="stat-card-icon" aria-hidden="true">
+        <AppIcon Name="@Icon" />
+    </div>
+    <div class="stat-card-body">
+        <div class="stat-card-label">@Label</div>
+        <div class="stat-card-value">@Value</div>
+        @if (!string.IsNullOrWhiteSpace(Hint))
+        {
+            <div class="stat-card-hint">@Hint</div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Label { get; set; } = string.Empty;
+    [Parameter] public string Value { get; set; } = "0";
+    [Parameter] public string Icon { get; set; } = "info";
+    [Parameter] public string Tone { get; set; } = "neutral";
+    [Parameter] public string? Hint { get; set; }
+}
