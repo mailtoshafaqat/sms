@@ -1,0 +1,126 @@
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+@inject IJSRuntime Js
+
+@if (showBanner)
+{
+    <div class="pwa-install-banner" role="region" aria-label="Install gate app">
+        @if (isIos)
+        {
+            <div class="pwa-install-copy">
+                <p class="pwa-install-title">Add gate app to your home screen</p>
+                <ol class="pwa-install-steps">
+                    <li>Tap <strong>Share</strong> (box with arrow, bottom of Safari)</li>
+                    <li>Tap <strong>Add to Home Screen</strong></li>
+                    <li>Tap <strong>Add</strong></li>
+                </ol>
+                <p class="pwa-install-note">Use <strong>Safari</strong> on iPhone (not Chrome).</p>
+            </div>
+        }
+        else if (installAvailable)
+        {
+            <div class="pwa-install-copy">
+                <p>Install this gate screen as an app for full-screen kiosk use.</p>
+                <button type="button" class="btn btn-secondary btn-sm" @onclick="InstallAsync">Install app</button>
+            </div>
+        }
+        else if (isAndroid)
+        {
+            <div class="pwa-install-copy">
+                <p class="pwa-install-title">Add gate app to your home screen</p>
+                <ol class="pwa-install-steps">
+                    <li>Tap <strong>⋮</strong> (three dots, top-right in Chrome)</li>
+                    <li>Tap <strong>Add to Home screen</strong> or <strong>Install app</strong></li>
+                    <li>Tap <strong>Add</strong> / <strong>Install</strong></li>
+                </ol>
+                @if (!isSecureContext)
+                {
+                    <p class="pwa-install-note">On phone over Wi‑Fi, Chrome hides the install button until you use HTTPS. Menu → Add to Home screen still works.</p>
+                }
+            </div>
+        }
+        else if (isDesktopChrome)
+        {
+            <div class="pwa-install-copy">
+                <p>
+                    Look for the <strong>install icon</strong> in the address bar (monitor with down arrow),
+                    or open the browser menu (⋮) → <strong>Install School Attendance Gate</strong>.
+                </p>
+            </div>
+        }
+        else
+        {
+            <div class="pwa-install-copy">
+                <p>Use browser menu → <strong>Install app</strong> or <strong>Add to Home screen</strong>.</p>
+            </div>
+        }
+        <button type="button" class="pwa-install-dismiss" aria-label="Dismiss" @onclick="Dismiss">×</button>
+    </div>
+}
+
+@code {
+    private bool showBanner;
+    private bool installAvailable;
+    private bool isIos;
+    private bool isAndroid;
+    private bool isDesktopChrome;
+    private bool isSecureContext;
+    private DotNetObjectReference<PwaInstallPrompt>? dotNetRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            if (await Js.InvokeAsync<bool>("smsPwaIsInstalled"))
+            {
+                return;
+            }
+
+            isIos = await Js.InvokeAsync<bool>("smsPwaIsIos");
+            isAndroid = await Js.InvokeAsync<bool>("smsPwaIsAndroid");
+            isDesktopChrome = await Js.InvokeAsync<bool>("smsPwaIsDesktopChrome");
+            isSecureContext = await Js.InvokeAsync<bool>("smsPwaIsSecureContext");
+            showBanner = true;
+            dotNetRef = DotNetObjectReference.Create(this);
+            await Js.InvokeVoidAsync("smsPwaRegisterHandlers", dotNetRef);
+            StateHasChanged();
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+
+    [JSInvokable]
+    public void OnInstallAvailable()
+    {
+        installAvailable = true;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task InstallAsync()
+    {
+        try
+        {
+            if (await Js.InvokeAsync<bool>("smsPwaInstall"))
+            {
+                showBanner = false;
+            }
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    private void Dismiss() => showBanner = false;
+
+    public ValueTask DisposeAsync()
+    {
+        dotNetRef?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}

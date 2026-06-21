@@ -3,7 +3,9 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Identity;
 using System.Security.Claims;
+using SMS.Application.DTOs;
 using SMS.Application.Interfaces;
+using SMS.Domain.Enums;
 using SMS.Infrastructure;
 using SMS.Infrastructure.Data;
 using SMS.Infrastructure.Identity;
@@ -114,6 +116,62 @@ app.MapGet("/attendance/register/export/pdf", async (
     var fileName = BuildRegisterFileName(register.SectionName, year, month, "pdf");
     return Results.File(bytes, "application/pdf", fileName);
 }).RequireAuthorization();
+
+app.MapPost("/attendance/gate/scan", async (
+    GateFaceScanRequest request,
+    ILocalBiometricService localBiometricService,
+    CancellationToken cancellationToken) =>
+{
+    if (request.Descriptor is null || request.Descriptor.Length < 32)
+    {
+        return Results.BadRequest(new GateFaceScanResponse(false, "Invalid face scan data."));
+    }
+
+    var match = await localBiometricService.MatchFaceAsync(request.Descriptor, cancellationToken);
+    if (match is null)
+    {
+        return Results.Ok(new GateFaceScanResponse(false, "Face not recognized. Enroll this student first (Local Biometric Test)."));
+    }
+
+    var result = await localBiometricService.ScanByExternalIdAsync(
+        match.ExternalId,
+        BiometricType.Face,
+        cancellationToken: cancellationToken);
+
+    var message = result.Success
+        ? $"{match.StudentName} — {result.Message}"
+        : result.Message;
+
+    return Results.Ok(new GateFaceScanResponse(result.Success, message, result.Success ? match.StudentName : null));
+}).RequireAuthorization().DisableAntiforgery();
+
+app.MapGet("/attendance/gate/enrollments", async (
+    ILocalBiometricService localBiometricService,
+    CancellationToken cancellationToken) =>
+    Results.Ok(await localBiometricService.GetFaceEnrollmentsAsync(cancellationToken)))
+    .RequireAuthorization();
+
+app.MapPost("/attendance/gate/record", async (
+    GateFaceRecordRequest request,
+    ILocalBiometricService localBiometricService,
+    CancellationToken cancellationToken) =>
+{
+    if (string.IsNullOrWhiteSpace(request.ExternalId))
+    {
+        return Results.BadRequest(new GateFaceScanResponse(false, "Missing student enrollment id."));
+    }
+
+    var result = await localBiometricService.ScanByExternalIdAsync(
+        request.ExternalId.Trim(),
+        BiometricType.Face,
+        cancellationToken: cancellationToken);
+
+    var message = result.Success && result.Match is not null
+        ? $"{result.Match.StudentName} — {result.Message}"
+        : result.Message;
+
+    return Results.Ok(new GateFaceScanResponse(result.Success, message, result.Match?.StudentName));
+}).RequireAuthorization().DisableAntiforgery();
 
 static string BuildRegisterFileName(string sectionName, int year, int month, string extension)
 {

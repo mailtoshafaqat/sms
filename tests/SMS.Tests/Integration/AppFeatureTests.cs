@@ -1,4 +1,6 @@
 using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -459,6 +461,148 @@ public class AppFeatureTests : IClassFixture<WebApplicationFactory<Program>>
             var logs = await attendanceService.GetRecentLogsAsync(10);
             Assert.Contains(logs, l => l.StudentName.Contains("Bio"));
             _output.WriteLine($"Biometric scan: PASS — {logs.Count} recent log(s)");
+        }
+        finally
+        {
+            await studentService.DeleteStudentAsync(studentId);
+        }
+    }
+
+    [Fact]
+    public async Task BiometricScan_InThenOut_AllowedWithinDuplicateWindow()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var classService = scope.ServiceProvider.GetRequiredService<IClassService>();
+        var studentService = scope.ServiceProvider.GetRequiredService<IStudentService>();
+        var attendanceService = scope.ServiceProvider.GetRequiredService<IAttendanceService>();
+        var localBio = scope.ServiceProvider.GetRequiredService<ILocalBiometricService>();
+
+        var sections = await classService.GetSectionOptionsAsync();
+        var sectionId = sections[0].SectionId;
+        var suffix = Guid.NewGuid().ToString("N")[..6];
+        var studentId = await studentService.SaveStudentAsync(new StudentFormDto
+        {
+            StudentCode = $"INOUT{suffix}",
+            FirstName = "InOut",
+            LastName = "Test",
+            SectionId = sectionId,
+            RollNumber = $"IO{suffix}",
+            IsActive = true
+        });
+
+        try
+        {
+            var descriptor = Enumerable.Range(0, 128).Select(i => (float)(Random.Shared.NextDouble() + i * 0.001)).ToArray();
+            var externalId = await localBio.EnrollFaceAsync(studentId, descriptor);
+
+            var checkIn = await localBio.ScanByExternalIdAsync(externalId, BiometricType.Face, ScanDirection.In);
+            Assert.True(checkIn.Success, checkIn.Message);
+
+            var checkOut = await localBio.ScanByExternalIdAsync(externalId, BiometricType.Face, ScanDirection.Out);
+            Assert.True(checkOut.Success, checkOut.Message);
+
+            var logs = await attendanceService.GetRecentLogsAsync(10);
+            Assert.Contains(logs, l => l.StudentName.Contains("InOut") && l.Direction == ScanDirection.In);
+            Assert.Contains(logs, l => l.StudentName.Contains("InOut") && l.Direction == ScanDirection.Out);
+            _output.WriteLine("Biometric IN/OUT: PASS — both scans recorded back-to-back");
+        }
+        finally
+        {
+            await studentService.DeleteStudentAsync(studentId);
+        }
+    }
+
+    [Fact]
+    public async Task EnrollFace_PersistsAndAppearsInGateList()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var classService = scope.ServiceProvider.GetRequiredService<IClassService>();
+        var studentService = scope.ServiceProvider.GetRequiredService<IStudentService>();
+        var localBio = scope.ServiceProvider.GetRequiredService<ILocalBiometricService>();
+
+        var sections = await classService.GetSectionOptionsAsync();
+        var sectionId = sections[0].SectionId;
+        var suffix = Guid.NewGuid().ToString("N")[..6];
+        var studentId = await studentService.SaveStudentAsync(new StudentFormDto
+        {
+            StudentCode = $"ENRL{suffix}",
+            FirstName = "Enroll",
+            LastName = "Gate",
+            SectionId = sectionId,
+            RollNumber = $"EG{suffix}",
+            IsActive = true
+        });
+
+        try
+        {
+            var descriptor = Enumerable.Range(0, 128).Select(i => (float)(Random.Shared.NextDouble() + i * 0.001)).ToArray();
+            var externalId = await localBio.EnrollFaceAsync(studentId, descriptor);
+            Assert.False(string.IsNullOrWhiteSpace(externalId));
+
+            var verify = await localBio.MatchFaceAsync(descriptor);
+            Assert.NotNull(verify);
+
+            var gateList = await localBio.GetFaceEnrollmentsAsync();
+            Assert.Contains(gateList, x => x.ExternalId == externalId && x.Descriptors.Count > 0);
+            _output.WriteLine($"Enroll face gate list: PASS — {gateList.Count} enrolled");
+        }
+        finally
+        {
+            await studentService.DeleteStudentAsync(studentId);
+        }
+    }
+
+    [Fact]
+    public async Task GateApi_EnrollmentsAndRecord_MarkInAndOut()
+    {
+        var authFactory = _factory.WithQaAuthentication();
+        await using var scope = authFactory.Services.CreateAsyncScope();
+        var classService = scope.ServiceProvider.GetRequiredService<IClassService>();
+        var studentService = scope.ServiceProvider.GetRequiredService<IStudentService>();
+        var localBio = scope.ServiceProvider.GetRequiredService<ILocalBiometricService>();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+
+        var admin = await userManager.FindByEmailAsync("admin@school.local")
+            ?? throw new InvalidOperationException("Admin user missing.");
+        var client = authFactory.CreateRoleClient("Admin", admin.Id);
+
+        var sections = await classService.GetSectionOptionsAsync();
+        var sectionId = sections[0].SectionId;
+        var suffix = Guid.NewGuid().ToString("N")[..6];
+        var studentId = await studentService.SaveStudentAsync(new StudentFormDto
+        {
+            StudentCode = $"GATE{suffix}",
+            FirstName = "Gate",
+            LastName = "Api",
+            SectionId = sectionId,
+            RollNumber = $"G{suffix}",
+            IsActive = true
+        });
+
+        try
+        {
+            var descriptor = Enumerable.Range(0, 128).Select(i => (float)(Random.Shared.NextDouble() + i * 0.001)).ToArray();
+            var externalId = await localBio.EnrollFaceAsync(studentId, descriptor);
+
+            var enrollmentsResponse = await client.GetAsync("/attendance/gate/enrollments");
+            Assert.Equal(HttpStatusCode.OK, enrollmentsResponse.StatusCode);
+            var enrollmentsJson = await enrollmentsResponse.Content.ReadAsStringAsync();
+            Assert.Contains(externalId, enrollmentsJson);
+            _output.WriteLine("Gate API enrollments: PASS");
+
+            var checkInResponse = await client.PostAsJsonAsync("/attendance/gate/record", new { externalId });
+            Assert.Equal(HttpStatusCode.OK, checkInResponse.StatusCode);
+            var checkIn = await checkInResponse.Content.ReadFromJsonAsync<GateFaceScanResponse>();
+            Assert.NotNull(checkIn);
+            Assert.True(checkIn.Success, checkIn.Message);
+            _output.WriteLine($"Gate API check-in: PASS — {checkIn.Message}");
+
+            var checkOutResponse = await client.PostAsJsonAsync("/attendance/gate/record", new { externalId });
+            Assert.Equal(HttpStatusCode.OK, checkOutResponse.StatusCode);
+            var checkOut = await checkOutResponse.Content.ReadFromJsonAsync<GateFaceScanResponse>();
+            Assert.NotNull(checkOut);
+            Assert.True(checkOut.Success, checkOut.Message);
+            _output.WriteLine($"Gate API check-out: PASS — {checkOut.Message}");
         }
         finally
         {

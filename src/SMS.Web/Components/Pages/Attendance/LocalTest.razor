@@ -2,6 +2,7 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Microsoft.AspNetCore.Components.Web
 @using Microsoft.JSInterop
+@using System.Text.Json
 @using SMS.Application.DTOs
 @using SMS.Application.Interfaces
 @using SMS.Domain.Enums
@@ -60,10 +61,14 @@ else
         <div class="card">
             <h3>Face Gate</h3>
             <p class="hint">
-                <strong>Enroll Face</strong> — one-time setup for the selected student.
-                <strong>Manual Scan Once</strong> — test a single IN/OUT without gate mode.
-                <strong>Start Auto Scan</strong> — same as the real gate kiosk (continuous matching).
+                <strong>Enroll Face</strong> — saves face to the gate list (does <em>not</em> mark attendance).
+                <strong>Manual Scan Once</strong> — marks IN/OUT attendance (student must be enrolled first).
+                <strong>Start Auto Scan</strong> — continuous gate mode on this test page.
             </p>
+            @if (gateEnrollmentCount > 0)
+            {
+                <p class="hint gate-status-ok">@gateEnrollmentCount student(s) enrolled for gate.</p>
+            }
             <video id="local-face-video" autoplay playsinline muted style="width: 100%; max-width: 480px; background: #111; border-radius: 8px;"></video>
             @if (isBusy)
             {
@@ -120,15 +125,15 @@ else
     private bool cameraRunning;
     private bool autoScanEnabled;
     private bool moduleReady;
-    private int lastAutoScanStudentId;
-    private DateTime lastAutoScanAt = DateTime.MinValue;
-    private readonly SemaphoreSlim scanLock = new(1, 1);
+    private int gateEnrollmentCount;
+    private static readonly JsonSerializerOptions DescriptorJsonOptions = new();
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
             students = (await StudentService.GetStudentsAsync(pageSize: 100)).Items;
+            gateEnrollmentCount = await LocalBiometricService.GetFaceEnrollmentCountAsync();
         }
         catch (Exception ex)
         {
@@ -208,53 +213,32 @@ else
     }
 
     [JSInvokable]
-    public async Task OnFaceDetectedAsync(float[] descriptor)
+    public Task OnGateScanStatusAsync(bool faceDetected, bool success, string statusMessage)
     {
-        if (!autoScanEnabled || descriptor.Length == 0)
+        if (!autoScanEnabled)
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        if (!await scanLock.WaitAsync(0))
+        return InvokeAsync(() =>
         {
-            return;
-        }
-
-        try
-        {
-            var match = await LocalBiometricService.MatchFaceAsync(descriptor);
-            if (match is null)
+            if (string.IsNullOrWhiteSpace(statusMessage))
             {
                 return;
             }
 
-            if (match.StudentId == lastAutoScanStudentId &&
-                (DateTime.UtcNow - lastAutoScanAt).TotalSeconds < 8)
+            SetFaceStatus(statusMessage);
+            if (success)
             {
-                return;
+                Toast.Success(statusMessage, "Attendance Marked");
+            }
+            else if (faceDetected)
+            {
+                Toast.Error(statusMessage, "Gate Scan");
             }
 
-            var result = await LocalBiometricService.ScanByExternalIdAsync(match.ExternalId, BiometricType.Face);
-            if (!result.Success)
-            {
-                return;
-            }
-
-            lastAutoScanStudentId = match.StudentId;
-            lastAutoScanAt = DateTime.UtcNow;
-
-            await InvokeAsync(() =>
-            {
-                var text = $"{match.StudentName} — {result.Message}";
-                SetFaceStatus(text);
-                Toast.Success(text, "Attendance Marked");
-                StateHasChanged();
-            });
-        }
-        finally
-        {
-            scanLock.Release();
-        }
+            StateHasChanged();
+        });
     }
 
     private async Task EnrollFaceAsync()
@@ -280,16 +264,32 @@ else
             await RunJsAsync(async () =>
             {
                 await module!.InvokeVoidAsync("loadFaceModels");
-                var descriptor = await module!.InvokeAsync<float[]?>("captureFaceDescriptor", "local-face-video");
-                if (descriptor is null || descriptor.Length == 0)
+                var descriptorJson = await module!.InvokeAsync<string?>("captureFaceDescriptorJson", "local-face-video");
+                if (string.IsNullOrWhiteSpace(descriptorJson))
                 {
                     NotifyError("No face detected. Face the camera in good light and try again.", "Enrollment Failed");
                     return;
                 }
 
-                var externalId = await LocalBiometricService.EnrollFaceAsync(selectedStudentId, descriptor);
+                var descriptor = JsonSerializer.Deserialize<float[]>(descriptorJson, DescriptorJsonOptions);
+                if (descriptor is null || descriptor.Length < 32)
+                {
+                    NotifyError("Face data was invalid. Try again.", "Enrollment Failed");
+                    return;
+                }
+
+                await LocalBiometricService.EnrollFaceAsync(selectedStudentId, descriptor);
+
+                var verify = await LocalBiometricService.MatchFaceAsync(descriptor);
+                if (verify is null)
+                {
+                    NotifyError("Face saved but could not be verified. Enroll again (2–3 samples).", "Enrollment Failed");
+                    return;
+                }
+
+                gateEnrollmentCount = await LocalBiometricService.GetFaceEnrollmentCountAsync();
                 var studentName = students.FirstOrDefault(s => s.Id == selectedStudentId)?.FullName ?? "Student";
-                var text = $"{studentName} is enrolled. You can test with Manual Scan or Gate Mode.";
+                var text = $"{studentName} is enrolled for gate ({gateEnrollmentCount} total). Manual Scan marks attendance — enroll does not.";
                 SetFaceStatus(text);
                 Toast.Success(text, "Face Enrolled");
             });
@@ -318,10 +318,17 @@ else
             await RunJsAsync(async () =>
             {
                 await module!.InvokeVoidAsync("loadFaceModels");
-                var descriptor = await module!.InvokeAsync<float[]?>("captureFaceDescriptor", "local-face-video");
-                if (descriptor is null || descriptor.Length == 0)
+                var descriptorJson = await module!.InvokeAsync<string?>("captureFaceDescriptorJson", "local-face-video");
+                if (string.IsNullOrWhiteSpace(descriptorJson))
                 {
                     NotifyError("No face detected.");
+                    return;
+                }
+
+                var descriptor = JsonSerializer.Deserialize<float[]>(descriptorJson, DescriptorJsonOptions);
+                if (descriptor is null || descriptor.Length < 32)
+                {
+                    NotifyError("Face data was invalid.");
                     return;
                 }
 
@@ -462,7 +469,5 @@ else
 
             await module.DisposeAsync();
         }
-
-        scanLock.Dispose();
     }
 }

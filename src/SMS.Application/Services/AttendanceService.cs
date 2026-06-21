@@ -207,13 +207,15 @@ public class AttendanceService(
         var duplicateWindow = TimeSpan.FromSeconds(device.DuplicateScanBlockSeconds);
         var recent = await attendanceRepository.GetLatestLogAsync(map.StudentId, deviceId, cancellationToken);
 
-        if (recent is not null && now - recent.ScanTime < duplicateWindow)
+        var daily = await attendanceRepository.GetDailyRecordAsync(map.StudentId, today, tracking: true, cancellationToken);
+        var resolvedDirection = direction ?? ResolveScanDirection(daily, now);
+
+        if (recent is not null
+            && now - recent.ScanTime < duplicateWindow
+            && recent.Direction == resolvedDirection)
         {
             return false;
         }
-
-        var daily = await attendanceRepository.GetDailyRecordAsync(map.StudentId, today, tracking: true, cancellationToken);
-        var resolvedDirection = direction ?? ResolveScanDirection(daily, now);
 
         var scanType = device.BiometricType == BiometricType.Both
             ? map.BiometricType

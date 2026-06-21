@@ -2,7 +2,7 @@ namespace SMS.Domain.Common;
 
 public static class FaceMatcher
 {
-    public const float MatchThreshold = 0.55f;
+    public const float MatchThreshold = 0.7f;
 
     public static float Distance(IReadOnlyList<float> left, IReadOnlyList<float> right)
     {

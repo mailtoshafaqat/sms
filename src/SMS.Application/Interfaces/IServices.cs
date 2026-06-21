@@ -133,5 +133,7 @@ public interface ILocalBiometricService
     Task<LocalBiometricMatchDto?> MatchFingerprintAsync(string credentialId, CancellationToken cancellationToken = default);
     Task<LocalBiometricScanResultDto> ScanAsync(int studentId, BiometricType type, ScanDirection? direction = null, CancellationToken cancellationToken = default);
     Task<LocalBiometricScanResultDto> ScanByExternalIdAsync(string externalId, BiometricType type, ScanDirection? direction = null, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<GateFaceEnrollmentDto>> GetFaceEnrollmentsAsync(CancellationToken cancellationToken = default);
+    Task<int> GetFaceEnrollmentCountAsync(CancellationToken cancellationToken = default);
 }
 

@@ -25,7 +25,18 @@ public class LocalBiometricService(
             ?? throw new InvalidOperationException("Student not found.");
 
         var externalId = BuildExternalId(BiometricType.Face, studentId);
-        await SaveTemplateAsync(studentId, BiometricType.Face, externalId, descriptor, cancellationToken);
+        var existing = await localBiometricRepository.GetTemplateAsync(studentId, BiometricType.Face, cancellationToken: cancellationToken);
+        var descriptors = existing is null
+            ? new List<float[]>()
+            : DeserializeDescriptorSet(existing.TemplateData).ToList();
+
+        descriptors.Add(descriptor.ToArray());
+        if (descriptors.Count > 3)
+        {
+            descriptors.RemoveAt(0);
+        }
+
+        await SaveTemplateAsync(studentId, BiometricType.Face, externalId, descriptors, cancellationToken);
         await EnsureBiometricMapAsync(studentId, BiometricType.Face, externalId, cancellationToken);
 
         return externalId;
@@ -41,16 +52,18 @@ public class LocalBiometricService(
 
         foreach (var template in templates)
         {
-            var stored = DeserializeDescriptor(template.TemplateData);
-            var distance = FaceMatcher.Distance(descriptor, stored);
-            if (distance < bestDistance)
+            foreach (var stored in DeserializeDescriptorSet(template.TemplateData))
             {
-                bestDistance = distance;
-                bestTemplate = template;
+                var distance = FaceMatcher.Distance(descriptor, stored);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    bestTemplate = template;
+                }
             }
         }
 
-        if (bestTemplate is null || !FaceMatcher.IsMatch(descriptor, DeserializeDescriptor(bestTemplate.TemplateData)))
+        if (bestTemplate is null || bestDistance > FaceMatcher.MatchThreshold)
         {
             return null;
         }
@@ -130,15 +143,22 @@ public class LocalBiometricService(
             return new LocalBiometricScanResultDto(false, $"No enabled {BiometricTypeRules.GetDisplayName(type)} device configured.");
         }
 
+        var template = await localBiometricRepository.GetByExternalIdAsync(externalId, cancellationToken: cancellationToken);
+        if (template is not null)
+        {
+            await EnsureBiometricMapAsync(template.StudentId, type, externalId, cancellationToken);
+        }
+
         var recorded = await attendanceService.ProcessBiometricScanAsync(externalId, device.Id, direction, cancellationToken);
         if (!recorded)
         {
             return new LocalBiometricScanResultDto(
                 false,
-                "Scan not recorded. Student may not be enrolled on this device, or scan was blocked as a duplicate.");
+                template is null
+                    ? "Scan not recorded. Student is not enrolled for gate attendance."
+                    : "Scan not recorded. Student may not be linked to the gate device, or scan was blocked as a duplicate (wait a few seconds).");
         }
 
-        var template = await localBiometricRepository.GetByExternalIdAsync(externalId, cancellationToken: cancellationToken);
         var student = template is null
             ? null
             : await studentRepository.GetStudentByIdAsync(template.StudentId, cancellationToken: cancellationToken);
@@ -152,6 +172,34 @@ public class LocalBiometricService(
                 : new LocalBiometricMatchDto(template.StudentId, student?.FullName ?? "Unknown", externalId, 0f));
     }
 
+    public async Task<IReadOnlyList<GateFaceEnrollmentDto>> GetFaceEnrollmentsAsync(CancellationToken cancellationToken = default)
+    {
+        var templates = await localBiometricRepository.GetFaceTemplatesAsync(cancellationToken);
+        var enrollments = new List<GateFaceEnrollmentDto>(templates.Count);
+
+        foreach (var template in templates)
+        {
+            var descriptors = DeserializeDescriptorSet(template.TemplateData)
+                .Where(x => x.Length >= 32)
+                .ToArray();
+            if (descriptors.Length == 0)
+            {
+                continue;
+            }
+
+            var student = await studentRepository.GetStudentByIdAsync(template.StudentId, cancellationToken: cancellationToken);
+            enrollments.Add(new GateFaceEnrollmentDto(
+                template.ExternalId,
+                student?.FullName ?? "Unknown",
+                descriptors));
+        }
+
+        return enrollments;
+    }
+
+    public async Task<int> GetFaceEnrollmentCountAsync(CancellationToken cancellationToken = default) =>
+        (await GetFaceEnrollmentsAsync(cancellationToken)).Count;
+
     private async Task SaveTemplateAsync(
         int studentId,
         BiometricType type,
@@ -161,9 +209,11 @@ public class LocalBiometricService(
     {
         var json = templatePayload switch
         {
-            IReadOnlyList<float> descriptor => JsonSerializer.Serialize(descriptor, JsonOptions),
+            float[][] set => SerializeDescriptorSet(set),
+            IReadOnlyList<float[]> set => SerializeDescriptorSet(set),
+            float[] single => SerializeDescriptorSet(new[] { single }),
             string payload => payload,
-            _ => JsonSerializer.Serialize(templatePayload, JsonOptions)
+            _ => throw new InvalidOperationException("Unsupported face template payload.")
         };
 
         var existing = await localBiometricRepository.GetTemplateAsync(studentId, type, tracking: true, cancellationToken);
@@ -236,8 +286,36 @@ public class LocalBiometricService(
         }
     }
 
+    private static string SerializeDescriptorSet(IEnumerable<float[]> descriptors) =>
+        JsonSerializer.Serialize(descriptors.Select(static d => d.ToArray()).ToArray(), JsonOptions);
+
     private static float[] DeserializeDescriptor(string json) =>
         JsonSerializer.Deserialize<float[]>(json, JsonOptions) ?? [];
+
+    private static IReadOnlyList<float[]> DeserializeDescriptorSet(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind == JsonValueKind.Array
+                && document.RootElement.GetArrayLength() > 0
+                && document.RootElement[0].ValueKind == JsonValueKind.Array)
+            {
+                return JsonSerializer.Deserialize<float[][]>(json, JsonOptions) ?? [];
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        var single = DeserializeDescriptor(json);
+        return single.Length >= 32 ? new[] { single } : [];
+    }
 
     private static string? ReadCredentialId(string json)
     {

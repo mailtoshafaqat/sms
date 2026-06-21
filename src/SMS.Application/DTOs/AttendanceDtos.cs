@@ -259,3 +259,11 @@ public record AttendanceNotificationDto(
     DateTime? SentAt,
     string WhatsAppUrl);
 
+public record GateFaceScanRequest(float[] Descriptor);
+
+public record GateFaceScanResponse(bool Success, string Message, string? StudentName = null);
+
+public record GateFaceRecordRequest(string ExternalId);
+
+public record GateFaceEnrollmentDto(string ExternalId, string StudentName, IReadOnlyList<float[]> Descriptors);
+

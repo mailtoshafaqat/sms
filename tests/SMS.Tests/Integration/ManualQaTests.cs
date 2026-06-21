@@ -115,6 +115,7 @@ public class ManualQaTests : IClassFixture<WebApplicationFactory<Program>>
         await TestPromotionHistoryAsync(sp, Fail, Pass);
         await TestAttendanceCalendarAsync(sp, Fail, Pass);
         await TestAttendancePatternAsync(sp, Fail, Pass);
+        await TestGatePwaAssetsAsync(authFactory, Fail, Pass);
         await TestBiometricDeviceSaveAsync(sp, Fail, Pass);
         await TestLocalFingerprintAsync(sp, Fail, Pass);
         await TestStudentSecondSaveAsync(sp, Fail, Pass);
@@ -707,5 +708,49 @@ public class ManualQaTests : IClassFixture<WebApplicationFactory<Program>>
         }
 
         pass("Users: create, role assign, deactivate, delete OK");
+    }
+
+    private static async Task TestGatePwaAssetsAsync(
+        WebApplicationFactory<Program> factory,
+        Action<string> fail,
+        Action<string> pass)
+    {
+        var client = factory.CreateClient();
+
+        var manifestResponse = await client.GetAsync("/manifest.webmanifest");
+        if (manifestResponse.StatusCode != HttpStatusCode.OK)
+        {
+            fail($"PWA manifest: expected 200, got {manifestResponse.StatusCode}");
+            return;
+        }
+
+        var manifest = await manifestResponse.Content.ReadAsStringAsync();
+        if (!manifest.Contains("/attendance/gate", StringComparison.Ordinal))
+        {
+            fail("PWA manifest: missing gate start_url");
+            return;
+        }
+
+        if (!manifest.Contains("gate-icon-192.png", StringComparison.Ordinal))
+        {
+            fail("PWA manifest: missing 192px install icon");
+            return;
+        }
+
+        var swResponse = await client.GetAsync("/service-worker.js");
+        if (swResponse.StatusCode != HttpStatusCode.OK)
+        {
+            fail($"PWA service worker: expected 200, got {swResponse.StatusCode}");
+            return;
+        }
+
+        var sw = await swResponse.Content.ReadAsStringAsync();
+        if (!sw.Contains("sms-gate-v", StringComparison.Ordinal))
+        {
+            fail("PWA service worker: unexpected cache name");
+            return;
+        }
+
+        pass("PWA: manifest and service worker served OK");
     }
 }

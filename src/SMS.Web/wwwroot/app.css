@@ -2646,6 +2646,58 @@ th {
     color: #cbd5e1;
 }
 
+.gate-kiosk-secure-alert {
+    text-align: left;
+    margin-bottom: 1.25rem;
+    padding: 1rem 1.1rem;
+    border-radius: 12px;
+    background: rgba(234, 179, 8, 0.15);
+    border: 2px solid #eab308;
+    color: #fef9c3;
+}
+
+.gate-kiosk-secure-alert p {
+    margin: 0 0 0.5rem;
+}
+
+.gate-kiosk-secure-url {
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.95rem;
+    word-break: break-all;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.25);
+    padding: 0.5rem 0.65rem;
+    border-radius: 8px;
+}
+
+.gate-kiosk-secure-url a {
+    color: #fff;
+    text-decoration: underline;
+}
+
+.gate-kiosk-secure-hint {
+    margin-bottom: 0 !important;
+    font-size: 0.85rem;
+    color: #fde68a;
+}
+
+.gate-kiosk-enrolled {
+    margin: 0.35rem 0 0;
+    font-size: 0.9rem;
+    color: #86efac;
+}
+
+.gate-kiosk-video-active {
+    outline: 3px solid #22c55e;
+    outline-offset: 2px;
+}
+
+.gate-kiosk-status {
+    margin: 0;
+    flex: 1 1 100%;
+    text-align: center;
+}
+
 .gate-kiosk-feedback {
     min-height: 5rem;
     display: flex;
@@ -2693,6 +2745,70 @@ th {
     gap: 0.75rem;
     justify-content: center;
     flex-wrap: wrap;
+}
+
+.pwa-install-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin: 0;
+    padding: 0.75rem 1rem;
+    background: rgba(29, 78, 216, 0.92);
+    color: #f8fafc;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.pwa-install-copy {
+    flex: 1 1 12rem;
+    min-width: 0;
+}
+
+.pwa-install-title {
+    margin: 0 0 0.35rem;
+    font-weight: 600;
+}
+
+.pwa-install-steps {
+    margin: 0.25rem 0 0.35rem;
+    padding-left: 1.15rem;
+}
+
+.pwa-install-steps li {
+    margin-bottom: 0.2rem;
+}
+
+.pwa-install-note {
+    margin: 0.35rem 0 0;
+    font-size: 0.8rem;
+    opacity: 0.92;
+}
+
+.pwa-install-banner p {
+    margin: 0;
+}
+
+.pwa-install-dismiss {
+    margin-left: auto;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font-size: 1.35rem;
+    line-height: 1;
+    padding: 0.15rem 0.35rem;
+    cursor: pointer;
+    opacity: 0.85;
+}
+
+.pwa-install-dismiss:hover {
+    opacity: 1;
+}
+
+.btn-sm {
+    padding: 0.35rem 0.75rem;
+    font-size: 0.85rem;
 }
 
 .btn-lg {
