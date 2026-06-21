@@ -11,30 +11,34 @@
 <div class="card help-section">
     <h2>Getting Started</h2>
     <ol>
-        <li>Open the app and go to <strong>Login</strong>.</li>
-        <li>Sign in with your admin account (default: <code>admin@school.local</code> / <code>Admin@123</code>).</li>
-        <li>Or test as teacher: <code>teacher@school.local</code> / <code>Teacher@123</code>.</li>
-        <li>Update school details under <strong>Settings → School Settings</strong>.</li>
-        <li>Add classes, then register students.</li>
+        <li>On first run, the app applies database migrations automatically at startup.</li>
+        <li>Default <strong>Admin</strong> and <strong>Coordinator</strong> login accounts are created automatically if missing.</li>
+        <li>Sign in with the credentials from your installer, then open <strong>Settings → User Accounts</strong> and change default passwords.</li>
+        <li>Create teacher accounts under <strong>Settings → User Accounts</strong> and assign sections under <strong>Settings → Staff Assignment</strong>.</li>
+        <li>Update school details under <strong>Settings → School Settings</strong>, then add classes and students.</li>
     </ol>
 </div>
 
 <div class="card help-section">
-    <h2>Test Accounts</h2>
+    <h2>Default Accounts (first install only)</h2>
     <ul>
-        <li><strong>Admin</strong> — <code>admin@school.local</code> / <code>Admin@123</code> (full access)</li>
-        <li><strong>Teacher</strong> — <code>teacher@school.local</code> / <code>Teacher@123</code> (attendance &amp; students)</li>
+        <li><strong>Admin</strong> — full access including settings, users, backup, and biometric enrollment.</li>
+        <li><strong>Coordinator</strong> — attendance across all sections, notifications, and academic years.</li>
     </ul>
-    <p class="hint">Sign out and sign in with each account to compare what teachers can and cannot access.</p>
+    <p class="hint">
+        Teacher accounts are <em>not</em> created automatically. The admin creates them after setup.
+        Passwords are not shown on the login screen — use the credentials from your deployment notes, then change them immediately.
+    </p>
 </div>
 
 <div class="card help-section">
     <h2>Login Troubleshooting</h2>
     <ul>
-        <li>Use the full email address as the username (for example, <code>admin@school.local</code>).</li>
+        <li>Use the full email address as the username.</li>
         <li>Passwords are case-sensitive.</li>
         <li>If login fails after a server restart, confirm SQL Server is running and the connection string in <code>appsettings.json</code> is correct.</li>
         <li><strong>Forgot password (offline):</strong> an admin can reset it at <strong>Settings → User Accounts</strong>. No email is required.</li>
+        <li><strong>Admin locked out completely:</strong> your IT installer can run <code>scripts\reset-admin-password.ps1</code> on the school server. Full steps: <strong>docs/DEPLOYMENT.md</strong> (section 8).</li>
     </ul>
 </div>
 
@@ -54,12 +58,13 @@
         <li><strong>Mark Attendance</strong> — teachers or admins mark present, absent, late, or leave manually.</li>
         <li><strong>Daily Sheet</strong> — review and finalize the day’s attendance summary.</li>
         <li><strong>Holiday Calendar</strong> — one-time holidays (Eid, exams) or annual repeating holidays (14 Aug, 25 Dec).</li>
+        <li><strong>Attendance Gate</strong> — phone/tablet kiosk with face scan (HTTPS required on mobile).</li>
         <li><strong>Live Gate</strong> — monitor biometric IN/OUT events in real time.</li>
-        <li><strong>Local Biometric Test</strong> — simulate scans during development (replace with device SDK in production).</li>
+        <li><strong>Local Biometric Test</strong> — enroll faces and test scans (admin only).</li>
     </ul>
     <p class="hint">
         School start time and late grace are configured in School Settings.
-        First scan of the day = IN; second scan = OUT.
+        First scan of the day = IN; second scan = OUT. Enroll each student’s face on the same phone used at the gate when possible.
     </p>
 </div>
 
@@ -102,8 +107,9 @@
 <div class="card help-section">
     <h2>Roles</h2>
     <ul>
-        <li><strong>Admin</strong> — full access including settings, promotion, and database backup.</li>
-        <li><strong>Teacher</strong> — attendance and student views (as configured).</li>
+        <li><strong>Admin</strong> — full access including settings, users, promotion, backup, and face enrollment.</li>
+        <li><strong>Coordinator</strong> — attendance, notifications, academic years, gate, and live monitor.</li>
+        <li><strong>Teacher</strong> — attendance and students for assigned sections only (created by admin).</li>
     </ul>
 </div>
 
@@ -111,6 +117,6 @@
     <h2>Support</h2>
     <p>
         For technical issues, note the error message, the page you were on, and the time it occurred.
-        Check the terminal or server logs when running locally with <code>dotnet run</code>.
+        Check the server logs when running on IIS or with <code>dotnet run</code> during setup.
     </p>
 </div>

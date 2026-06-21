@@ -32,6 +32,8 @@ public class AppFeatureTests : IClassFixture<WebApplicationFactory<Program>>
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var html = await response.Content.ReadAsStringAsync();
         Assert.Contains("Login", html);
+        Assert.DoesNotContain("Admin@123", html);
+        Assert.DoesNotContain("Demo logins", html);
         _output.WriteLine("Login page: PASS");
     }
 
@@ -59,17 +61,30 @@ public class AppFeatureTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
-    public async Task TeacherAccount_HasExpectedCredentials()
+    public async Task CoordinatorAccount_HasExpectedCredentials()
     {
         await using var scope = _factory.Services.CreateAsyncScope();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
 
-        var teacher = await userManager.FindByEmailAsync("teacher@school.local");
-        Assert.NotNull(teacher);
-        Assert.True(await userManager.CheckPasswordAsync(teacher, "Teacher@123"));
-        var roles = await userManager.GetRolesAsync(teacher);
-        Assert.Contains("Teacher", roles);
-        _output.WriteLine("Teacher account: PASS");
+        var coordinator = await userManager.FindByEmailAsync("coordinator@school.local");
+        Assert.NotNull(coordinator);
+        Assert.True(await userManager.CheckPasswordAsync(coordinator, "Coordinator@123"));
+        var roles = await userManager.GetRolesAsync(coordinator);
+        Assert.Contains("Coordinator", roles);
+        _output.WriteLine("Coordinator account: PASS");
+    }
+
+    [Fact]
+    public async Task DefaultSeedAccounts_IncludeAdminAndCoordinator()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+
+        var admin = await userManager.FindByEmailAsync("admin@school.local");
+        var coordinator = await userManager.FindByEmailAsync("coordinator@school.local");
+        Assert.NotNull(admin);
+        Assert.NotNull(coordinator);
+        _output.WriteLine("Default seed accounts: PASS — admin and coordinator present");
     }
 
     [Fact]

@@ -20,13 +20,9 @@ dotnet run --project src/SMS.Web
 
 Open **http://localhost:5258**
 
-| Role | Email | Password |
-|------|-------|----------|
-| Admin | `admin@school.local` | `Admin@123` |
-| Coordinator | `coordinator@school.local` | `Coordinator@123` |
-| Teacher | `teacher@school.local` | `Teacher@123` |
+On first startup, EF migrations run automatically and default **Admin** and **Coordinator** accounts are created if missing. Change default passwords under **Settings → User Accounts** before production use.
 
-Connection string: `src/SMS.Web/appsettings.json` (default: `localhost,14331` / Docker).
+**School deployment (IIS, SQL Express, gate phone, admin reset):** see **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** — all steps in one file.
 
 ---
 
@@ -34,6 +30,7 @@ Connection string: `src/SMS.Web/appsettings.json` (default: `localhost,14331` / 
 
 | Document | Audience |
 |----------|----------|
+| **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** | **School IT / installer** — SQL Express, IIS, HTTPS, gate phone, admin reset (all steps in one file) |
 | **[docs/HANDOVER.md](docs/HANDOVER.md)** | **Next developer** — full technical handover, architecture, routes, RBAC, biometric, testing, troubleshooting |
 | **[docs/CURSOR-AI-GUIDE.md](docs/CURSOR-AI-GUIDE.md)** | **Next developer** — how to use Cursor AI on this project (chat is not stored in repo) |
 | `/help` in the app | End-user help for school staff |

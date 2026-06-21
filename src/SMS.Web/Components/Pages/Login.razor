@@ -14,14 +14,7 @@
 
 <div class="card login-card">
     <h2 class="login-card-title">Welcome back</h2>
-    <details class="login-demo-hints">
-        <summary>Demo logins</summary>
-        <ul>
-            <li>Admin: <code>admin@school.local</code> / <code>Admin@123</code></li>
-            <li>Coordinator: <code>coordinator@school.local</code> / <code>Coordinator@123</code></li>
-            <li>Teacher: <code>teacher@school.local</code> / <code>Teacher@123</code></li>
-        </ul>
-    </details>
+    <p class="login-card-hint">Sign in with the email and password provided by your school administrator.</p>
 
     @if (!string.IsNullOrWhiteSpace(error))
     {
@@ -55,11 +48,6 @@
 
     protected override void OnInitialized()
     {
-        if (string.IsNullOrWhiteSpace(Input.Email))
-        {
-            Input.Email = "admin@school.local";
-        }
-
         if (QueryError == "invalid")
         {
             error = "Invalid email or password.";

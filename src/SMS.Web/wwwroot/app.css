@@ -196,6 +196,13 @@
     color: #44403c;
 }
 
+.login-card-hint {
+    margin: 0 0 1.25rem;
+    color: #64748b;
+    font-size: 0.92rem;
+    line-height: 1.45;
+}
+
 .login-panel .field-input {
     border-color: #e7e5e4;
     min-height: 2.35rem;

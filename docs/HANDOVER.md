@@ -104,25 +104,24 @@ dotnet run --project src/SMS.Web
 
 Open: **http://localhost:5258**
 
+> **Migrations at startup:** `Program.cs` calls `DatabaseSeeder.SeedAsync`, which runs `MigrateAsync()` on every app start. Manual `dotnet ef database update` is optional for local dev.
+
 > **Important:** Stop the running app (`Ctrl+C`) before `dotnet build` or `dotnet ef migrations add` — otherwise DLL file locks cause build failures.
 
-On first startup, `DatabaseSeeder` runs migrations and seeds demo data automatically.
+On first startup, `DatabaseSeeder` runs migrations and seeds demo school data. Default login accounts (created once if missing):
 
----
-
-## 6. Demo accounts
-
-| Role | Email | Password |
-|------|-------|----------|
+| Role | Email | Initial password |
+|------|-------|------------------|
 | Admin | `admin@school.local` | `Admin@123` |
 | Coordinator | `coordinator@school.local` | `Coordinator@123` |
-| Teacher | `teacher@school.local` | `Teacher@123` |
 
-Demo teacher is linked to **Class 9-A** for section-scoped attendance/students.
+**Teacher accounts are not seeded.** Create them at **Settings → User Accounts**. Change all default passwords before deployment. Credentials are **not** shown on the login page.
 
-Inactive users cannot log in (checked in `Login.razor`).
+> **Full school deployment (IIS, SQL Express, mobile gate, admin reset):** see **[DEPLOYMENT.md](DEPLOYMENT.md)**.
 
----
+### 5.4 Admin password reset (emergency)
+
+See **[DEPLOYMENT.md §8](DEPLOYMENT.md#8-admin-password-reset-emergency)**.
 
 ## 7. Roles & permissions
 

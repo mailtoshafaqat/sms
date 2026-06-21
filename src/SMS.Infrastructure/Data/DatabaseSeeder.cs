@@ -91,21 +91,6 @@ public static class DatabaseSeeder
             await userManager.AddToRoleAsync(admin, "Admin");
         }
 
-        if (await userManager.FindByEmailAsync("teacher@school.local") is null)
-        {
-            var teacher = new ApplicationUser
-            {
-                UserName = "teacher@school.local",
-                Email = "teacher@school.local",
-                EmailConfirmed = true,
-                DisplayName = "Demo Teacher",
-                IsActive = true
-            };
-
-            await userManager.CreateAsync(teacher, "Teacher@123");
-            await userManager.AddToRoleAsync(teacher, "Teacher");
-        }
-
         if (await userManager.FindByEmailAsync("coordinator@school.local") is null)
         {
             var coordinator = new ApplicationUser
@@ -119,55 +104,6 @@ public static class DatabaseSeeder
 
             await userManager.CreateAsync(coordinator, "Coordinator@123");
             await userManager.AddToRoleAsync(coordinator, "Coordinator");
-        }
-
-        await EnsureDemoTeacherSectionLinkAsync(context, userManager);
-    }
-
-    private static async Task EnsureDemoTeacherSectionLinkAsync(AppDbContext context, UserManager<ApplicationUser> userManager)
-    {
-        var teacherUser = await userManager.FindByEmailAsync("teacher@school.local");
-        if (teacherUser is null)
-        {
-            return;
-        }
-
-        var school = await context.Schools
-            .Include(x => x.Classes)
-            .ThenInclude(x => x.Sections)
-            .FirstOrDefaultAsync();
-
-        if (school is null)
-        {
-            return;
-        }
-
-        var section = school.Classes.SelectMany(x => x.Sections).FirstOrDefault();
-        if (section is null)
-        {
-            return;
-        }
-
-        var teacher = await context.Teachers.FirstOrDefaultAsync(x => x.UserId == teacherUser.Id);
-        if (teacher is null)
-        {
-            teacher = new Teacher
-            {
-                SchoolId = school.Id,
-                UserId = teacherUser.Id,
-                FirstName = "Demo",
-                LastName = "Teacher",
-                EmployeeCode = "T001",
-                IsActive = true
-            };
-            context.Teachers.Add(teacher);
-            await context.SaveChangesAsync();
-        }
-
-        if (section.ClassTeacherId != teacher.Id)
-        {
-            section.ClassTeacherId = teacher.Id;
-            await context.SaveChangesAsync();
         }
     }
 

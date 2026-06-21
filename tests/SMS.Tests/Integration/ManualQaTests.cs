@@ -49,8 +49,7 @@ public class ManualQaTests : IClassFixture<WebApplicationFactory<Program>>
             ?? throw new InvalidOperationException("Admin user missing.");
         var coordinator = await userManager.FindByEmailAsync("coordinator@school.local")
             ?? throw new InvalidOperationException("Coordinator user missing.");
-        var teacher = await userManager.FindByEmailAsync("teacher@school.local")
-            ?? throw new InvalidOperationException("Teacher user missing.");
+        var teacher = await TestUserFactory.EnsureTeacherUserAsync(userManager);
 
         var authFactory = _factory.WithQaAuthentication();
 
