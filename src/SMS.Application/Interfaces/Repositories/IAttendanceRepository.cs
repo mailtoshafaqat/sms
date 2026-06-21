@@ -1,5 +1,6 @@
 using SMS.Domain.Entities.Attendance;
 using SMS.Domain.Entities.Shared;
+using SMS.Domain.Enums;
 
 namespace SMS.Application.Interfaces.Repositories;
 
@@ -30,13 +31,14 @@ public interface IAttendanceRepository
     void AddHoliday(SchoolHoliday holiday);
     void RemoveHoliday(SchoolHoliday holiday);
     Task RemoveAutoHolidayRecordsAsync(DateOnly date, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<DailyAttendance>> GetLateDailyRecordsAsync(
+    Task<IReadOnlyList<DailyAttendance>> GetDailyRecordsByStatusAsync(
         int academicYearId,
         DateOnly from,
         DateOnly to,
+        AttendanceStatus status,
         IReadOnlyCollection<int>? sectionIds,
         CancellationToken cancellationToken = default);
-    Task<IReadOnlyDictionary<int, int>> GetAttendedDayCountsAsync(
+    Task<IReadOnlyDictionary<int, int>> GetMarkedDayCountsAsync(
         int academicYearId,
         DateOnly from,
         DateOnly to,

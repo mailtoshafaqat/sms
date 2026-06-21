@@ -1,26 +1,37 @@
+@page "/attendance/pattern-report"
 @page "/attendance/late-report"
 @rendermode InteractiveServer
 @using SMS.Application.DTOs
 @using SMS.Application.Interfaces
+@using SMS.Domain.Enums
 @inject IAttendanceService AttendanceService
 @inject IClassService ClassService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject ToastService Toast
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 
-<PageTitle>Late Students Report</PageTitle>
+<PageTitle>Attendance Pattern Report</PageTitle>
 
-<PageIntro Title="Frequent Late Students"
-           Subtitle="Find students who are late repeatedly over a date range — useful for follow-up with parents or class teachers." />
+<PageIntro Title="Attendance Pattern Report"
+           Subtitle="See which students keep showing the same attendance status — late, absent, present, or leave." />
 
 <div class="card toolbar-card">
     <label class="toolbar-field">
-        <span class="field-label">From</span>
-        <InputDate @bind-Value="fromDate" class="field-input" />
+        <span class="field-label">Status</span>
+        <InputSelect @bind-Value="selectedStatus" class="field-select">
+            @foreach (var status in ReportStatuses)
+            {
+                <option value="@status">@status</option>
+            }
+        </InputSelect>
     </label>
     <label class="toolbar-field">
-        <span class="field-label">To</span>
-        <InputDate @bind-Value="toDate" class="field-input" />
+        <span class="field-label">Period</span>
+        <InputSelect @bind-Value="periodDays" @bind-Value:after="ApplyPeriod" class="field-select">
+            <option value="7">Last 7 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="90">Last 90 days</option>
+        </InputSelect>
     </label>
     <label class="toolbar-field">
         <span class="field-label">Class / Section</span>
@@ -33,33 +44,34 @@
         </InputSelect>
     </label>
     <label class="toolbar-field">
-        <span class="field-label">Min late days</span>
-        <InputNumber @bind-Value="minLateCount" class="field-input" min="1" max="100" />
+        <span class="field-label">Min times</span>
+        <InputNumber @bind-Value="minOccurrences" class="field-input" min="1" max="100" />
     </label>
     <label class="toolbar-field">
-        <span class="field-label">Min consecutive</span>
-        <InputNumber @bind-Value="minConsecutiveLate" class="field-input" min="0" max="30" />
+        <span class="field-label">Days in a row</span>
+        <InputNumber @bind-Value="minConsecutive" class="field-input" min="0" max="30" />
     </label>
     <button type="button" class="btn btn-icon" @onclick="LoadAsync">
         <AppIcon Name="load" />
-        <span>Load report</span>
+        <span>Show</span>
     </button>
 </div>
 
+<p class="hint">@GetFilterSummary()</p>
 <p class="hint">
-  Shows students marked <strong>Late</strong> at least the minimum number of times between the selected dates.
-  Set <strong>Min consecutive</strong> to 2 or more to focus on students late on back-to-back school days.
+    <strong>Min times</strong> = total count in the period (e.g. 3 = late at least 3 days total).
+    <strong>Days in a row</strong> = longest back-to-back run (e.g. 5 = late on Mon–Fri with no gap; use <strong>0</strong> to ignore this).
 </p>
 
 @if (isLoading)
 {
-    <p class="hint">Loading report...</p>
+    <p class="hint">Loading...</p>
 }
 else if (hasLoaded && rows.Count == 0)
 {
     <div class="card empty-state compact">
         <AppIcon Name="warning" />
-        <p>No students match these filters. Try a wider date range or lower the minimum late days.</p>
+        <p>No students match. Try <strong>Min times = 2</strong> and <strong>Days in a row = 0</strong>.</p>
     </div>
 }
 else if (rows.Count > 0)
@@ -67,7 +79,7 @@ else if (rows.Count > 0)
     <div class="card table-card">
         <div class="card-header-row">
             <h3>@rows.Count student@(rows.Count == 1 ? "" : "s")</h3>
-            <span class="hint">@DateOnly.FromDateTime(fromDate).ToString("d") – @DateOnly.FromDateTime(toDate).ToString("d")</span>
+            <span class="hint">@selectedStatus · @GetFilterSummary()</span>
         </div>
         <div class="table-responsive">
             <table>
@@ -76,11 +88,9 @@ else if (rows.Count > 0)
                         <th>Student</th>
                         <th>Roll</th>
                         <th>Class</th>
-                        <th>Late days</th>
-                        <th>Attended days</th>
-                        <th>Longest streak</th>
-                        <th>Current streak</th>
-                        <th>Last late</th>
+                        <th>Times</th>
+                        <th>Best streak</th>
+                        <th>Last date</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -90,20 +100,18 @@ else if (rows.Count > 0)
                             <td>@row.StudentName</td>
                             <td>@row.RollNumber</td>
                             <td>@row.ClassSection</td>
-                            <td><strong>@row.LateCount</strong></td>
-                            <td>@row.AttendedDays</td>
+                            <td><strong>@row.OccurrenceCount</strong></td>
                             <td>
-                                @if (row.ConsecutiveLateDays >= 3)
+                                @if (row.LongestStreak >= 3)
                                 {
-                                    <span class="status-badge status-disconnected">@row.ConsecutiveLateDays days</span>
+                                    <span class="status-badge @GetStreakBadgeClass(row.Status)">@row.LongestStreak</span>
                                 }
                                 else
                                 {
-                                    @row.ConsecutiveLateDays
+                                    @row.LongestStreak
                                 }
                             </td>
-                            <td>@row.CurrentLateStreak</td>
-                            <td>@row.LastLateDate.ToString("d")</td>
+                            <td>@row.LastOccurrenceDate.ToString("d")</td>
                         </tr>
                     }
                 </tbody>
@@ -113,26 +121,60 @@ else if (rows.Count > 0)
 }
 
 @code {
-    private IReadOnlyList<ChronicLateStudentDto> rows = [];
+    private static readonly AttendanceStatus[] ReportStatuses =
+    [
+        AttendanceStatus.Late,
+        AttendanceStatus.Absent,
+        AttendanceStatus.Present,
+        AttendanceStatus.Leave
+    ];
+
+    private IReadOnlyList<AttendancePatternStudentDto> rows = [];
     private IReadOnlyList<ClassSectionOptionDto> sectionOptions = [];
+    private int periodDays = 30;
     private DateTime fromDate = DateTime.Today.AddDays(-30);
     private DateTime toDate = DateTime.Today;
+    private AttendanceStatus selectedStatus = AttendanceStatus.Late;
     private int sectionId;
-    private int minLateCount = 3;
-    private int minConsecutiveLate;
+    private int minOccurrences = 3;
+    private int minConsecutive;
     private bool isLoading;
     private bool hasLoaded;
 
     protected override async Task OnInitializedAsync()
     {
+        ApplyPeriod();
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
         var userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         sectionOptions = await ClassService.GetSectionOptionsAsync(userId);
         await LoadAsync();
     }
 
+    private void ApplyPeriod()
+    {
+        toDate = DateTime.Today;
+        fromDate = DateTime.Today.AddDays(-Math.Max(1, periodDays) + 1);
+    }
+
+    private string GetFilterSummary()
+    {
+        var period = periodDays switch
+        {
+            7 => "last 7 days",
+            90 => "last 90 days",
+            _ => "last 30 days"
+        };
+
+        return minConsecutive <= 0
+            ? $"Students marked {selectedStatus.ToString().ToLower()} at least {minOccurrences} time(s) in the {period}."
+            : $"Students marked {selectedStatus.ToString().ToLower()} at least {minOccurrences} time(s), including a run of {minConsecutive} day(s) in a row, in the {period}.";
+    }
+
     private async Task LoadAsync()
     {
+        minOccurrences = Math.Clamp(minOccurrences, 1, 100);
+        minConsecutive = Math.Clamp(minConsecutive, 0, 30);
+
         isLoading = true;
         hasLoaded = false;
 
@@ -140,14 +182,13 @@ else if (rows.Count > 0)
         {
             var auth = await AuthStateProvider.GetAuthenticationStateAsync();
             var userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            var from = DateOnly.FromDateTime(fromDate);
-            var to = DateOnly.FromDateTime(toDate);
 
-            rows = await AttendanceService.GetChronicLateStudentsAsync(
-                from,
-                to,
-                minLateCount,
-                minConsecutiveLate,
+            rows = await AttendanceService.GetAttendancePatternAsync(
+                DateOnly.FromDateTime(fromDate),
+                DateOnly.FromDateTime(toDate),
+                selectedStatus,
+                minOccurrences,
+                minConsecutive,
                 sectionId > 0 ? sectionId : null,
                 userId);
             hasLoaded = true;
@@ -163,4 +204,10 @@ else if (rows.Count > 0)
             isLoading = false;
         }
     }
+
+    private static string GetStreakBadgeClass(AttendanceStatus status) => status switch
+    {
+        AttendanceStatus.Present => "status-connected",
+        _ => "status-disconnected"
+    };
 }

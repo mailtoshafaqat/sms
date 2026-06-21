@@ -643,22 +643,28 @@ public class AttendanceService(
         return scan > start;
     }
 
-    public async Task<IReadOnlyList<ChronicLateStudentDto>> GetChronicLateStudentsAsync(
+    public async Task<IReadOnlyList<AttendancePatternStudentDto>> GetAttendancePatternAsync(
         DateOnly from,
         DateOnly to,
-        int minLateCount = 3,
-        int minConsecutiveLate = 0,
+        AttendanceStatus status,
+        int minOccurrences = 3,
+        int minConsecutive = 0,
         int? sectionId = null,
         string? userId = null,
         CancellationToken cancellationToken = default)
     {
+        if (status == AttendanceStatus.Holiday)
+        {
+            throw new InvalidOperationException("Holiday is not supported for pattern reports.");
+        }
+
         if (to < from)
         {
             throw new InvalidOperationException("End date must be on or after start date.");
         }
 
-        minLateCount = Math.Max(1, minLateCount);
-        minConsecutiveLate = Math.Max(0, minConsecutiveLate);
+        minOccurrences = Math.Max(1, minOccurrences);
+        minConsecutive = Math.Max(0, minConsecutive);
 
         var currentYear = await academicYearRepository.GetCurrentAsync(cancellationToken: cancellationToken);
         IReadOnlyCollection<int>? sectionIds = null;
@@ -674,13 +680,14 @@ public class AttendanceService(
             sectionIds = allowed.Count > 0 ? allowed : [];
         }
 
-        var lateRecords = await attendanceRepository.GetLateDailyRecordsAsync(
+        var statusRecords = await attendanceRepository.GetDailyRecordsByStatusAsync(
             currentYear.Id,
             from,
             to,
+            status,
             sectionIds,
             cancellationToken);
-        var attendedCounts = await attendanceRepository.GetAttendedDayCountsAsync(
+        var markedCounts = await attendanceRepository.GetMarkedDayCountsAsync(
             currentYear.Id,
             from,
             to,
@@ -689,20 +696,20 @@ public class AttendanceService(
         var enrollments = await attendanceRepository.GetActiveStudentsAsync(currentYear.Id, cancellationToken);
         var enrollmentMap = enrollments.ToDictionary(x => x.StudentId);
 
-        var results = new List<ChronicLateStudentDto>();
+        var results = new List<AttendancePatternStudentDto>();
 
-        foreach (var group in lateRecords.GroupBy(x => x.StudentId))
+        foreach (var group in statusRecords.GroupBy(x => x.StudentId))
         {
-            var lateDates = group.Select(x => x.AttendanceDate).OrderBy(x => x).ToList();
-            var lateCount = lateDates.Count;
-            if (lateCount < minLateCount)
+            var occurrenceDates = group.Select(x => x.AttendanceDate).OrderBy(x => x).ToList();
+            var occurrenceCount = occurrenceDates.Count;
+            if (occurrenceCount < minOccurrences)
             {
                 continue;
             }
 
-            var consecutiveLateDays = GetLongestConsecutiveStreak(lateDates);
-            var currentLateStreak = GetCurrentConsecutiveStreak(lateDates);
-            if (minConsecutiveLate > 0 && consecutiveLateDays < minConsecutiveLate)
+            var longestStreak = GetLongestConsecutiveStreak(occurrenceDates);
+            var currentStreak = GetCurrentConsecutiveStreak(occurrenceDates);
+            if (minConsecutive > 0 && longestStreak < minConsecutive)
             {
                 continue;
             }
@@ -712,21 +719,22 @@ public class AttendanceService(
                 continue;
             }
 
-            results.Add(new ChronicLateStudentDto(
+            results.Add(new AttendancePatternStudentDto(
                 group.Key,
                 enrollment.RollNumber,
                 enrollment.Student.FirstName + " " + enrollment.Student.LastName,
                 enrollment.Section.ClassRoom.Name + "-" + enrollment.Section.Name,
-                lateCount,
-                attendedCounts.GetValueOrDefault(group.Key, 0),
-                consecutiveLateDays,
-                currentLateStreak,
-                lateDates[^1]));
+                status,
+                occurrenceCount,
+                markedCounts.GetValueOrDefault(group.Key, 0),
+                longestStreak,
+                currentStreak,
+                occurrenceDates[^1]));
         }
 
         return results
-            .OrderByDescending(x => x.LateCount)
-            .ThenByDescending(x => x.ConsecutiveLateDays)
+            .OrderByDescending(x => x.OccurrenceCount)
+            .ThenByDescending(x => x.LongestStreak)
             .ThenBy(x => x.StudentName)
             .ToList();
     }

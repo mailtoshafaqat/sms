@@ -109,16 +109,17 @@ public record DailyAttendanceRowDto(
     DateTime? CheckOutTime,
     string? Remarks);
 
-public record ChronicLateStudentDto(
+public record AttendancePatternStudentDto(
     int StudentId,
     string RollNumber,
     string StudentName,
     string ClassSection,
-    int LateCount,
-    int AttendedDays,
-    int ConsecutiveLateDays,
-    int CurrentLateStreak,
-    DateOnly LastLateDate);
+    AttendanceStatus Status,
+    int OccurrenceCount,
+    int TotalMarkedDays,
+    int LongestStreak,
+    int CurrentStreak,
+    DateOnly LastOccurrenceDate);
 
 public record ManualAttendanceSheetResultDto(
     IReadOnlyList<ManualAttendanceRowDto> Rows,

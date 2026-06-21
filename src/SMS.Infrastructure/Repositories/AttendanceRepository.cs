@@ -265,10 +265,11 @@ public class AttendanceRepository(
         scopedDb.Context.DailyAttendances.RemoveRange(records);
     }
 
-    public Task<IReadOnlyList<DailyAttendance>> GetLateDailyRecordsAsync(
+    public Task<IReadOnlyList<DailyAttendance>> GetDailyRecordsByStatusAsync(
         int academicYearId,
         DateOnly from,
         DateOnly to,
+        AttendanceStatus status,
         IReadOnlyCollection<int>? sectionIds,
         CancellationToken cancellationToken = default) =>
         DbContextAccess.ReadAsync(
@@ -280,7 +281,7 @@ public class AttendanceRepository(
                         x.AcademicYearId == academicYearId
                         && x.AttendanceDate >= from
                         && x.AttendanceDate <= to
-                        && x.Status == AttendanceStatus.Late);
+                        && x.Status == status);
 
                 if (sectionIds is { Count: > 0 })
                 {
@@ -291,7 +292,7 @@ public class AttendanceRepository(
             },
             cancellationToken);
 
-    public Task<IReadOnlyDictionary<int, int>> GetAttendedDayCountsAsync(
+    public Task<IReadOnlyDictionary<int, int>> GetMarkedDayCountsAsync(
         int academicYearId,
         DateOnly from,
         DateOnly to,
@@ -306,7 +307,7 @@ public class AttendanceRepository(
                         x.AcademicYearId == academicYearId
                         && x.AttendanceDate >= from
                         && x.AttendanceDate <= to
-                        && (x.Status == AttendanceStatus.Present || x.Status == AttendanceStatus.Late));
+                        && x.Status != AttendanceStatus.Holiday);
 
                 if (sectionIds is { Count: > 0 })
                 {

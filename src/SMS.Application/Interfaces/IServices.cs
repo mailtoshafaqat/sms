@@ -68,11 +68,12 @@ public interface IAttendanceService
     Task MarkHolidayAsync(DateOnly date, string title, string? description = null, bool repeatsAnnually = false, CancellationToken cancellationToken = default);
     Task RemoveHolidayAsync(DateOnly date, CancellationToken cancellationToken = default);
     Task RemoveAnnualHolidayAsync(int holidayId, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<ChronicLateStudentDto>> GetChronicLateStudentsAsync(
+    Task<IReadOnlyList<AttendancePatternStudentDto>> GetAttendancePatternAsync(
         DateOnly from,
         DateOnly to,
-        int minLateCount = 3,
-        int minConsecutiveLate = 0,
+        AttendanceStatus status,
+        int minOccurrences = 3,
+        int minConsecutive = 0,
         int? sectionId = null,
         string? userId = null,
         CancellationToken cancellationToken = default);

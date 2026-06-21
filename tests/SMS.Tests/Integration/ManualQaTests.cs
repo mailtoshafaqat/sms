@@ -67,6 +67,7 @@ public class ManualQaTests : IClassFixture<WebApplicationFactory<Program>>
             ("/attendance/daily", true, true, true),
             ("/attendance/manual", true, true, true),
             ("/attendance/register", true, true, true),
+            ("/attendance/pattern-report", true, true, true),
             ("/attendance/late-report", true, true, true),
             ("/attendance/calendar", true, true, false),
             ("/attendance/notifications", true, true, false),
@@ -113,6 +114,7 @@ public class ManualQaTests : IClassFixture<WebApplicationFactory<Program>>
         await TestMonthlyRegisterAndExportsAsync(authFactory, sp, admin.Id, Fail, Pass);
         await TestPromotionHistoryAsync(sp, Fail, Pass);
         await TestAttendanceCalendarAsync(sp, Fail, Pass);
+        await TestAttendancePatternAsync(sp, Fail, Pass);
         await TestBiometricDeviceSaveAsync(sp, Fail, Pass);
         await TestLocalFingerprintAsync(sp, Fail, Pass);
         await TestStudentSecondSaveAsync(sp, Fail, Pass);
@@ -427,6 +429,89 @@ public class ManualQaTests : IClassFixture<WebApplicationFactory<Program>>
         }
 
         pass($"Attendance calendar: {calendar.Days.Count} day(s) for {now:yyyy-MM}");
+    }
+
+    private static async Task TestAttendancePatternAsync(IServiceProvider sp, Action<string> fail, Action<string> pass)
+    {
+        var classService = sp.GetRequiredService<IClassService>();
+        var studentService = sp.GetRequiredService<IStudentService>();
+        var attendanceService = sp.GetRequiredService<IAttendanceService>();
+
+        var sections = await classService.GetSectionOptionsAsync();
+        if (sections.Count == 0)
+        {
+            fail("Pattern report: no sections");
+            return;
+        }
+
+        var sectionId = sections[0].SectionId;
+        const string demoCode = "PATTERN-DEMO";
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var from = today.AddDays(-29);
+
+        var existing = await studentService.GetStudentsAsync(search: demoCode, pageSize: 5);
+        int studentId;
+        if (existing.Items.FirstOrDefault(x => x.StudentCode == demoCode) is { } found)
+        {
+            studentId = found.Id;
+        }
+        else
+        {
+            studentId = await studentService.SaveStudentAsync(new StudentFormDto
+            {
+                StudentCode = demoCode,
+                FirstName = "Pattern",
+                LastName = "Demo",
+                SectionId = sectionId,
+                RollNumber = "PAT-1",
+                IsActive = true
+            });
+        }
+
+        var lateDaysMarked = 0;
+        for (var offset = 0; offset < 30 && lateDaysMarked < 5; offset++)
+        {
+            var date = today.AddDays(-offset);
+            var sheet = await attendanceService.GetManualAttendanceSheetAsync(sectionId, date);
+            if (!sheet.CanEdit)
+            {
+                continue;
+            }
+
+            var row = sheet.Rows.FirstOrDefault(r => r.StudentId == studentId);
+            if (row is null)
+            {
+                continue;
+            }
+
+            row.Status = AttendanceStatus.Late;
+            await attendanceService.SaveManualAttendanceAsync(sectionId, date, [row], userId: null);
+            lateDaysMarked++;
+        }
+
+        if (lateDaysMarked < 3)
+        {
+            fail($"Pattern report: could only mark {lateDaysMarked} late day(s) for demo student");
+            return;
+        }
+
+        var report = await attendanceService.GetAttendancePatternAsync(
+            from,
+            today,
+            AttendanceStatus.Late,
+            minOccurrences: 3,
+            minConsecutive: 0,
+            sectionId: null,
+            userId: null);
+
+        var demoRow = report.FirstOrDefault(x => x.StudentId == studentId);
+        if (demoRow is null)
+        {
+            fail($"Pattern report: demo student not returned ({report.Count} row(s) total)");
+            return;
+        }
+
+        pass($"Pattern report: {report.Count} student(s); demo 'Pattern Demo' has {demoRow.OccurrenceCount} late day(s), streak {demoRow.LongestStreak}");
     }
 
     private static async Task TestBiometricDeviceSaveAsync(IServiceProvider sp, Action<string> fail, Action<string> pass)

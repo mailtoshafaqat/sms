@@ -467,6 +467,68 @@ public class AppFeatureTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
+    public async Task Attendance_PatternReport_ReturnsSeededStudent()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var classService = scope.ServiceProvider.GetRequiredService<IClassService>();
+        var studentService = scope.ServiceProvider.GetRequiredService<IStudentService>();
+        var attendanceService = scope.ServiceProvider.GetRequiredService<IAttendanceService>();
+
+        var sections = await classService.GetSectionOptionsAsync();
+        Assert.NotEmpty(sections);
+        var sectionId = sections[0].SectionId;
+        const string demoCode = "PATTERN-DEMO";
+        var today = DateOnly.FromDateTime(DateTime.Today);
+
+        var existing = await studentService.GetStudentsAsync(search: demoCode, pageSize: 5);
+        var studentId = existing.Items.FirstOrDefault(x => x.StudentCode == demoCode)?.Id
+            ?? await studentService.SaveStudentAsync(new StudentFormDto
+            {
+                StudentCode = demoCode,
+                FirstName = "Pattern",
+                LastName = "Demo",
+                SectionId = sectionId,
+                RollNumber = "PAT-1",
+                IsActive = true
+            });
+
+        var lateDaysMarked = 0;
+        for (var offset = 0; offset < 30 && lateDaysMarked < 5; offset++)
+        {
+            var date = today.AddDays(-offset);
+            var sheet = await attendanceService.GetManualAttendanceSheetAsync(sectionId, date);
+            if (!sheet.CanEdit)
+            {
+                continue;
+            }
+
+            var row = sheet.Rows.FirstOrDefault(r => r.StudentId == studentId);
+            if (row is null)
+            {
+                continue;
+            }
+
+            row.Status = AttendanceStatus.Late;
+            await attendanceService.SaveManualAttendanceAsync(sectionId, date, [row], userId: null);
+            lateDaysMarked++;
+        }
+
+        Assert.True(lateDaysMarked >= 3, $"Expected at least 3 editable late days, got {lateDaysMarked}");
+
+        var report = await attendanceService.GetAttendancePatternAsync(
+            today.AddDays(-29),
+            today,
+            AttendanceStatus.Late,
+            minOccurrences: 3,
+            minConsecutive: 0);
+
+        var demoRow = report.FirstOrDefault(x => x.StudentId == studentId);
+        Assert.NotNull(demoRow);
+        Assert.True(demoRow.OccurrenceCount >= 3);
+        _output.WriteLine($"Pattern report: {report.Count} student(s); Pattern Demo late={demoRow.OccurrenceCount}, streak={demoRow.LongestStreak}");
+    }
+
+    [Fact]
     public async Task Attendance_FinalizeDaily()
     {
         await using var scope = _factory.Services.CreateAsyncScope();
