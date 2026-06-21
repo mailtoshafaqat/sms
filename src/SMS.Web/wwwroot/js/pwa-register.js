@@ -45,12 +45,30 @@
 
     window.smsPwaIsSecureContext = () => window.isSecureContext;
 
+    function buildHttpsUrl(pathname, search = '') {
+        const host = window.location.hostname;
+        const port = window.location.port;
+
+        // Local dev: dotnet run uses HTTP :5258 and HTTPS :7258
+        if (port === '5258') {
+            return `https://${host}:7258${pathname}${search}`;
+        }
+
+        // IIS / production: standard HTTPS on 443 (no port in URL)
+        if (!port || port === '80') {
+            return `https://${host}${pathname}${search}`;
+        }
+
+        // Custom HTTP port — try HTTPS on same port
+        return `https://${host}:${port}${pathname}${search}`;
+    }
+
     window.smsGateGetSecureUrl = () => {
         if (window.isSecureContext) {
             return window.location.href;
         }
 
-        return `https://${window.location.hostname}:7258${window.location.pathname}`;
+        return buildHttpsUrl(window.location.pathname, window.location.search);
     };
 
     window.smsIsMobileDevice = () =>
@@ -62,7 +80,7 @@
             return null;
         }
 
-        return `https://${host}:7258/attendance/gate`;
+        return buildHttpsUrl('/attendance/gate');
     };
 
     if ('serviceWorker' in navigator) {
@@ -83,7 +101,7 @@
             return;
         }
 
-        const httpsUrl = `https://${window.location.hostname}:7258${path}${window.location.search}`;
+        const httpsUrl = buildHttpsUrl(path, window.location.search);
         if (window.location.href !== httpsUrl) {
             window.location.replace(httpsUrl);
         }

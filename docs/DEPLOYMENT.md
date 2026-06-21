@@ -139,7 +139,48 @@ Grant the app pool read/execute on `C:\inetpub\sms` and write access to:
 - `App_Data\` (backups, uploads)
 - Any folder used for student photos if configured
 
-### 5.4 HTTPS (required for gate camera on phones)
+### 5.4 Ports — IIS vs development
+
+| Mode | Ports | Config file |
+|------|-------|-------------|
+| **Development** (`dotnet run`) | HTTP **5258**, HTTPS **7258** | `launchSettings.json` — **not used after publish** |
+| **IIS (production)** | HTTP **80**, HTTPS **443** (standard) | IIS site **Bindings** in IIS Manager |
+
+**After publish you do not set 5258 or 7258.** Those are only for local `dotnet run`.
+
+In IIS Manager → your site → **Bindings**:
+
+| Type | Port | Use |
+|------|------|-----|
+| `https` | **443** | Main URL — admin + gate phone (camera works) |
+| `http` | **80** | Optional — redirect users to HTTPS |
+
+Example URLs on the school network:
+
+```text
+https://192.168.1.10/
+https://192.168.1.10/attendance/gate
+```
+
+No `:7258` in the URL when using IIS on port 443.
+
+**Custom port (optional):** you may bind HTTPS to e.g. **8443** if 443 is in use — then use `https://192.168.1.10:8443/attendance/gate` and open that port in the firewall. You still do **not** need 5258/7258.
+
+**Config files to check after publish:**
+
+| File | What to set |
+|------|-------------|
+| `appsettings.json` | SQL `DefaultConnection` only |
+| `web.config` | Auto-created by `dotnet publish` — usually no edits |
+| `launchSettings.json` | **Not deployed** — ignore for IIS |
+
+Optional environment variable on the server (IIS site → Configuration Editor or system env):
+
+```text
+ASPNETCORE_ENVIRONMENT=Production
+```
+
+### 5.5 HTTPS (required for gate camera on phones)
 
 Browsers **block the camera on HTTP** from phones. Use **HTTPS**.
 
@@ -154,7 +195,7 @@ Bind HTTPS in IIS (port **443**). Gate URL example:
 https://192.168.1.10/attendance/gate
 ```
 
-### 5.5 Windows Firewall
+### 5.6 Windows Firewall
 
 Allow inbound on the school Wi‑Fi profile:
 
