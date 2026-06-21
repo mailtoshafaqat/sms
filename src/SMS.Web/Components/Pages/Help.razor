@@ -89,8 +89,8 @@
         <li>To restore, use SQL Server Management Studio or <code>RESTORE DATABASE</code> with the downloaded <code>.bak</code> file.</li>
     </ul>
     <p class="hint">
-        Docker SQL Server (port 14331): run <code>docker compose up -d</code> from the project root so
-        <code>App_Data/backups</code> is mapped to <code>/var/opt/mssql/backup</code>.
+        Backups are stored under <code>App_Data/backups</code> on the school server (SQL Express on Windows).
+        The SQL service account needs write permission on that folder. See <strong>docs/DEPLOYMENT.md</strong>.
     </p>
 </div>
 

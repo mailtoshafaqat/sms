@@ -1,5 +1,9 @@
 # SMS — School Deployment Guide
 
+**For the school (client): Windows only — SQL Server Express + IIS. No Docker.**
+
+Docker in this project is **for your development only** (`docker compose up -d`). Do not install Docker at the client site.
+
 Single reference for installing SMS at a school: **Windows server + SQL Express + IIS + phone gate**.
 
 The mobile phone is **not** where the app lives — it is only a browser for the gate camera. The app and database run on one **school PC or server**.
@@ -10,18 +14,18 @@ The mobile phone is **not** where the app lives — it is only a browser for the
 
 ```text
 [School Windows PC / Server]
-   ├── IIS  →  SMS.Web (published .NET 8 app)
-   └── SQL Express  →  SMS database
+   ├── IIS  →  SMS.Web (published folder, e.g. publish\ or C:\inetpub\sms)
+   └── SQL Server Express  →  SMS database (same PC — no Docker)
 
 [Admin laptop]     →  https://school-server/  (students, settings, enroll)
 [Gate phone/tablet] →  https://school-server/attendance/gate
 ```
 
-| Component | Where it runs |
-|-----------|----------------|
-| Application + database | School Windows PC |
-| Gate camera / face scan | Phone browser (same Wi‑Fi as server) |
-| Internet | Optional (face models cache from CDN on first use) |
+| Component | Client (school) | You (developer) |
+|-----------|-----------------|-----------------|
+| Database | **SQL Server Express** on Windows | Optional **Docker** SQL (`localhost,14331`) |
+| Web app | **IIS** + published folder | `dotnet run` |
+| Docker | **Not used** | `docker compose up -d` for dev only |
 
 ---
 
@@ -49,25 +53,48 @@ Install on the **school server**:
    - Authentication: **Mixed Mode** (SQL login) **or** Windows Authentication
 3. Ensure the **SQL Server service** is running (Services → `SQL Server (SQLEXPRESS)`).
 
-### 3.2 Connection string
+### 3.2 Connection string and backup (client `publish` folder)
 
-Edit `appsettings.json` in the published app folder (e.g. `C:\inetpub\sms\appsettings.json`).
+Edit `appsettings.json` in the published app folder (e.g. `publish\appsettings.json` or `C:\inetpub\sms\appsettings.json`).
 
-**Windows Authentication (app and SQL on same PC):**
+**Windows Authentication (recommended — app and SQL on same PC):**
 
 ```json
 "ConnectionStrings": {
   "DefaultConnection": "Server=localhost\\SQLEXPRESS;Database=SMS;Trusted_Connection=True;TrustServerCertificate=True;MultipleActiveResultSets=true"
+},
+"DatabaseBackup": {
+  "LocalDownloadDirectory": "App_Data/backups",
+  "SqlServerBackupPath": ""
 }
 ```
 
-**SQL login:**
+**SQL login** (if not using Windows auth):
 
 ```json
 "ConnectionStrings": {
   "DefaultConnection": "Server=localhost\\SQLEXPRESS;Database=SMS;User Id=sms_app;Password=YOUR_STRONG_PASSWORD;TrustServerCertificate=True;MultipleActiveResultSets=true"
+},
+"DatabaseBackup": {
+  "LocalDownloadDirectory": "App_Data/backups",
+  "SqlServerBackupPath": ""
 }
 ```
+
+| Setting | Client value | Notes |
+|---------|--------------|--------|
+| `LocalDownloadDirectory` | `App_Data/backups` | Folder under your **publish** / IIS path |
+| `SqlServerBackupPath` | **`""` (empty)** | SQL Express on Windows — not Docker |
+
+Create the backup folder before first backup:
+
+```powershell
+mkdir publish\App_Data\backups
+```
+
+Grant **Modify** on `publish\App_Data\backups` to the SQL Server service account (usually `NT SERVICE\MSSQL$SQLEXPRESS`).
+
+**In-app backup:** Admin → **Settings → Database Backup** → Create Backup Now → Download. No SSMS required.
 
 Create the login in SSMS if using SQL auth. Do **not** expose SQL port 1433 to the internet.
 
@@ -100,12 +127,14 @@ On a build machine (or the server if SDK is installed):
 
 ```powershell
 cd C:\path\to\SMS
-dotnet publish src/SMS.Web -c Release -o C:\inetpub\sms
+dotnet publish src/SMS.Web -c Release -o .\publish
 ```
 
-Copy the entire `C:\inetpub\sms` folder to the school server if built elsewhere.
+Copy the entire `publish` folder to the school server if built elsewhere.
 
-Update `appsettings.json` (and `appsettings.Production.json` if used) with the production connection string **before** going live.
+The published `appsettings.json` / `appsettings.Production.json` are already set for **SQL Express + Windows backup** (no Docker). Only change the connection string if the client uses SQL login instead of Windows auth.
+
+Update `appsettings.json` in the publish folder with the client connection string **before** going live.
 
 ---
 
@@ -308,11 +337,41 @@ The tool resets the password, clears lockout, reactivates the account, or **crea
 
 ---
 
-## 9. Backup
+## 9. Database backup (client — SQL Express, no Docker)
 
-1. **Settings → Database Backup** (admin) → Create Backup Now.
-2. Download `.bak` files and store off-site (USB or another PC).
-3. Run a backup before term-end, promotions, or major changes.
+Backups run from the **SMS app** (Admin → **Settings → Database Backup**). No Docker, no SSMS required to create backups.
+
+**Config in `publish\appsettings.json`:**
+
+```json
+"DatabaseBackup": {
+  "LocalDownloadDirectory": "App_Data/backups",
+  "SqlServerBackupPath": ""
+}
+```
+
+**Steps:**
+
+1. Create folder: `publish\App_Data\backups`
+2. Grant **Modify** on that folder to `NT SERVICE\MSSQL$SQLEXPRESS` (Services → SQL Server (SQLEXPRESS) uses this account)
+3. In app: **Create Backup Now** → **Download** the `.bak` file
+
+**Restore** a `.bak` needs SSMS or Azure Data Studio (one-time install on server if needed).
+
+---
+
+### Developer note (Docker — not for client)
+
+If **you** develop with `docker compose up -d` and `localhost,14331`, use in **your** dev `appsettings.json`:
+
+```json
+"DatabaseBackup": {
+  "LocalDownloadDirectory": "App_Data/backups",
+  "SqlServerBackupPath": "/var/opt/mssql/backup"
+}
+```
+
+And map `./src/SMS.Web/App_Data/backups:/var/opt/mssql/backup` in `docker-compose.yml`. **Do not copy this to the client.**
 
 ---
 
@@ -329,7 +388,9 @@ The tool resets the password, clears lockout, reactivates the account, or **crea
 - [ ] Students and classes entered  
 - [ ] Faces enrolled (Local Biometric Test)  
 - [ ] Gate tested from phone on Wi‑Fi (`/attendance/gate`)  
-- [ ] Backup tested once  
+- [ ] `publish\App_Data\backups` folder exists; SQL service has write permission  
+- [ ] `DatabaseBackup:SqlServerBackupPath` is **`""`** (empty — client has no Docker)  
+- [ ] Backup tested once in app (**Settings → Database Backup**)  
 
 ---
 
@@ -342,6 +403,7 @@ The tool resets the password, clears lockout, reactivates the account, or **crea
 | Face not recognized | Re-enroll on **same phone** as gate; good lighting |
 | Login fails | SQL running? Connection string correct? |
 | Admin locked out | Run `scripts\reset-admin-password.ps1` |
+| Backup fails | SQL Express running? Folder `publish\App_Data\backups` exists? SQL service has **Modify** permission? `SqlServerBackupPath` must be **`""`** on client |
 | App won't start after publish | .NET 8 Hosting Bundle installed? `iisreset` |
 | Build errors on dev PC | Stop running `SMS.Web` before `dotnet build` |
 
@@ -353,7 +415,8 @@ Technical/developer details: **`docs/HANDOVER.md`**.
 
 ## 12. Do not do this
 
-- Do **not** copy only “built files” to the phone — the phone cannot host the app or SQL.  
+- Do **not** install Docker at the client school — use **SQL Express** only.  
+- Do **not** copy `localhost,14331` or `/var/opt/mssql/backup` settings to the client — those are for **your** dev Docker setup.  
 - Do **not** use `dotnet run` for daily school use — use IIS.  
 - Do **not** leave default passwords (`Admin@123`) in production.  
 - Do **not** expose SQL Server to the public internet.

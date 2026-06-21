@@ -1,3 +1,6 @@
+# DEVELOPER ONLY — Docker SQL Server for local development.
+# School clients do NOT use Docker. See docs/DEPLOYMENT.md (SQL Express on Windows).
+
 services:
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
