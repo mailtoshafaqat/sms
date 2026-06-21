@@ -2,7 +2,11 @@ namespace SMS.Domain.Common;
 
 public static class FaceMatcher
 {
+    /// <summary>Same-device matching (enroll + scan on one camera).</summary>
     public const float MatchThreshold = 0.7f;
+
+    /// <summary>Gate kiosk — allows laptop enroll + phone scan (slightly looser).</summary>
+    public const float GateMatchThreshold = 0.82f;
 
     public static float Distance(IReadOnlyList<float> left, IReadOnlyList<float> right)
     {
@@ -21,7 +25,7 @@ public static class FaceMatcher
         return MathF.Sqrt(sum);
     }
 
-    public static bool IsMatch(IReadOnlyList<float> left, IReadOnlyList<float> right) =>
-        Distance(left, right) <= MatchThreshold;
+    public static bool IsMatch(IReadOnlyList<float> left, IReadOnlyList<float> right, float threshold = MatchThreshold) =>
+        Distance(left, right) <= threshold;
 }
 

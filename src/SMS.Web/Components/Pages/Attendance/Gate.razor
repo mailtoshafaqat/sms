@@ -20,6 +20,7 @@
         @if (enrolledCount > 0)
         {
             <p class="gate-kiosk-enrolled">@enrolledCount face(s) enrolled for gate</p>
+            <p class="gate-kiosk-enrolled-hint">For best results on this phone, enroll the face on this same device (Local Biometric Test).</p>
         }
     </header>
 
@@ -28,7 +29,7 @@
         <div class="gate-kiosk-secure-alert" role="alert">
             <p><strong>Camera blocked on HTTP.</strong> On a phone, open this secure link instead:</p>
             <p class="gate-kiosk-secure-url"><a href="@secureGateUrl">@secureGateUrl</a></p>
-            <p class="gate-kiosk-secure-hint">Chrome will warn about the certificate — tap <strong>Advanced</strong> → <strong>Proceed</strong>, then allow camera.</p>
+            <p class="gate-kiosk-secure-hint">Chrome will warn about the certificate — tap <strong>Advanced</strong> → <strong>Proceed</strong>, then allow camera. Install the PWA from this HTTPS link (not HTTP).</p>
         </div>
     }
     else if (enrolledCount == 0)
@@ -38,18 +39,15 @@
         </div>
     }
 
-    <div class="gate-kiosk-feedback @(isError ? "error" : lastSuccess ? "success" : "")">
-        @if (!string.IsNullOrWhiteSpace(message))
-        {
-            <p class="gate-kiosk-message">@message</p>
-        }
-        else
-        {
-            <p class="gate-kiosk-message muted">Ready — stand in front of the camera</p>
-        }
-    </div>
+    <div id="gate-error-only" class="gate-kiosk-error-only" hidden role="alert"></div>
 
-    <video id="gate-face-video" autoplay playsinline muted class="gate-kiosk-video @(faceSeen ? "gate-kiosk-video-active" : "")"></video>
+    <div class="gate-kiosk-video-wrap idle" id="gate-video-wrap">
+        <video id="gate-face-video" autoplay playsinline muted class="gate-kiosk-video"></video>
+        <div class="gate-kiosk-overlay">
+            <div class="gate-kiosk-icon" id="gate-frame-icon"></div>
+            <p class="gate-kiosk-frame-label" id="gate-frame-label"></p>
+        </div>
+    </div>
 
     <div class="gate-kiosk-actions">
         @if (isStarting)
@@ -63,6 +61,7 @@
         else
         {
             <button class="btn btn-secondary btn-lg" type="button" @onclick="SwitchCameraAsync">Switch camera</button>
+            <button class="btn btn-lg" type="button" @onclick="ScanOnceAsync" disabled="@isScanning">@(isScanning ? "Scanning…" : "Scan now")</button>
         }
         <a class="btn btn-secondary btn-lg" href="/">Exit</a>
     </div>
@@ -75,6 +74,7 @@
     private bool lastSuccess;
     private bool cameraRunning;
     private bool isStarting;
+    private bool isScanning;
     private bool needsHttps;
     private bool faceSeen;
     private int enrolledCount;
@@ -167,18 +167,34 @@
                 return;
             }
 
-            if (success || (DateTime.UtcNow - lastStatusAt).TotalSeconds >= 4)
-            {
-                lastStatusAt = DateTime.UtcNow;
-                SetMessage(statusMessage, !success, success: success);
-                if (success)
-                {
-                    Toast.Success(statusMessage, "Attendance Marked");
-                }
-            }
+            lastStatusAt = DateTime.UtcNow;
+            SetMessage(statusMessage, !success, success: success);
 
             StateHasChanged();
         });
+    }
+
+    private async Task ScanOnceAsync()
+    {
+        if (dotNetRef is null || !cameraRunning)
+        {
+            return;
+        }
+
+        isScanning = true;
+        try
+        {
+            await Js.InvokeVoidAsync("smsGateScanOnce", dotNetRef, "gate-face-video");
+        }
+        catch (JSException ex)
+        {
+            SetMessage(ex.Message, true);
+        }
+        finally
+        {
+            isScanning = false;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private async Task SwitchCameraAsync()

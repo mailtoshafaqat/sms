@@ -36,11 +36,16 @@ builder.Services.Configure<FormOptions>(options =>
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-if (builder.Environment.IsDevelopment())
+builder.Services.Configure<Microsoft.AspNetCore.Components.Server.CircuitOptions>(options =>
 {
-    builder.Services.Configure<Microsoft.AspNetCore.Components.Server.CircuitOptions>(
-        options => options.DetailedErrors = true);
-}
+    options.DisconnectedCircuitMaxRetained = 100;
+    options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromMinutes(3);
+    options.JSInteropDefaultCallTimeout = TimeSpan.FromMinutes(2);
+    if (builder.Environment.IsDevelopment())
+    {
+        options.DetailedErrors = true;
+    }
+});
 
 var app = builder.Build();
 

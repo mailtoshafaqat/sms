@@ -32,12 +32,21 @@
     <p class="hint">Configure start time, grace minutes, and end time under Settings → School.</p>
 </div>
 
-@if (!moduleReady)
+@if (!jsReady)
 {
-    <p>Loading biometric module...</p>
+    <p>Loading biometric scripts…</p>
 }
 else
 {
+    @if (needsHttps)
+    {
+        <div class="gate-kiosk-secure-alert" role="alert">
+            <p><strong>Camera blocked on HTTP.</strong> On a phone, open this secure link instead:</p>
+            <p class="gate-kiosk-secure-url"><a href="@securePageUrl">@securePageUrl</a></p>
+            <p class="gate-kiosk-secure-hint">Chrome will warn about the certificate — tap <strong>Advanced</strong> → <strong>Proceed</strong>, then allow camera.</p>
+        </div>
+    }
+
     <div class="card form-grid">
         <label>
             Student (for enrollment only)
@@ -113,7 +122,6 @@ else
 @code {
     private enum Tab { Face, Fingerprint }
 
-    private IJSObjectReference? module;
     private DotNetObjectReference<LocalTest>? dotNetRef;
     private IReadOnlyList<StudentListItemDto> students = [];
     private int selectedStudentId;
@@ -124,7 +132,9 @@ else
     private string? enrolledFingerprintId;
     private bool cameraRunning;
     private bool autoScanEnabled;
-    private bool moduleReady;
+    private bool jsReady;
+    private bool needsHttps;
+    private string securePageUrl = string.Empty;
     private int gateEnrollmentCount;
     private static readonly JsonSerializerOptions DescriptorJsonOptions = new();
 
@@ -143,20 +153,26 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || moduleReady)
+        if (!firstRender || jsReady)
         {
             return;
         }
 
         try
         {
-            module = await Js.InvokeAsync<IJSObjectReference>("import", "./js/local-biometric.js");
             dotNetRef = DotNetObjectReference.Create(this);
-            moduleReady = true;
+            var isSecure = await Js.InvokeAsync<bool>("smsPwaIsSecureContext");
+            if (!isSecure)
+            {
+                securePageUrl = await Js.InvokeAsync<string>("smsGateGetSecureUrl");
+                needsHttps = true;
+            }
+
+            jsReady = true;
         }
         catch (Exception ex)
         {
-            NotifyError($"Failed to load biometric module: {ex.Message}");
+            NotifyError($"Failed to load biometric scripts: {ex.Message}");
         }
 
         StateHasChanged();
@@ -164,12 +180,16 @@ else
 
     private async Task StartCameraAsync()
     {
+        if (needsHttps)
+        {
+            NotifyError("Open the HTTPS link above to use the camera on your phone.");
+            return;
+        }
+
         await RunJsAsync(async () =>
         {
-            var js = module!;
             SetFaceStatus("Loading face models…");
-            await js.InvokeVoidAsync("loadFaceModels");
-            await js.InvokeVoidAsync("startCamera", "local-face-video");
+            await Js.InvokeVoidAsync("smsLocalBioStartCamera", "local-face-video");
             cameraRunning = true;
             SetFaceStatus("Camera ready. Select a student, then click Enroll Face.");
             Toast.Info("Camera started. You can enroll or test scans now.", "Camera Ready");
@@ -181,8 +201,7 @@ else
         await RunJsAsync(async () =>
         {
             autoScanEnabled = false;
-            await module!.InvokeVoidAsync("stopAutoFaceScan");
-            await module!.InvokeVoidAsync("stopCamera");
+            await Js.InvokeVoidAsync("smsLocalBioStopCamera");
             cameraRunning = false;
             SetFaceStatus("Camera stopped.");
             Toast.Info("Camera stopped.");
@@ -191,22 +210,22 @@ else
 
     private async Task ToggleAutoScanAsync()
     {
-        if (module is null || dotNetRef is null)
+        if (dotNetRef is null)
         {
-            NotifyError("Biometric module is not ready.");
+            NotifyError("Biometric scripts are not ready.");
             return;
         }
 
         autoScanEnabled = !autoScanEnabled;
         if (autoScanEnabled)
         {
-            await module.InvokeVoidAsync("startAutoFaceScan", "local-face-video", dotNetRef, 2500);
+            await Js.InvokeVoidAsync("smsLocalBioStartAutoScan", "local-face-video", dotNetRef, 2500);
             SetFaceStatus("Gate mode on — first scan = IN, second = OUT.");
             Toast.Info("Gate mode started. Stand in front of the camera.", "Gate Mode");
         }
         else
         {
-            await module.InvokeVoidAsync("stopAutoFaceScan");
+            await Js.InvokeVoidAsync("smsLocalBioStopAutoScan");
             SetFaceStatus("Gate mode stopped.");
             Toast.Info("Gate mode stopped.");
         }
@@ -263,8 +282,7 @@ else
         {
             await RunJsAsync(async () =>
             {
-                await module!.InvokeVoidAsync("loadFaceModels");
-                var descriptorJson = await module!.InvokeAsync<string?>("captureFaceDescriptorJson", "local-face-video");
+                var descriptorJson = await Js.InvokeAsync<string?>("smsLocalBioCaptureJson", "local-face-video");
                 if (string.IsNullOrWhiteSpace(descriptorJson))
                 {
                     NotifyError("No face detected. Face the camera in good light and try again.", "Enrollment Failed");
@@ -317,8 +335,7 @@ else
         {
             await RunJsAsync(async () =>
             {
-                await module!.InvokeVoidAsync("loadFaceModels");
-                var descriptorJson = await module!.InvokeAsync<string?>("captureFaceDescriptorJson", "local-face-video");
+                var descriptorJson = await Js.InvokeAsync<string?>("smsLocalBioCaptureJson", "local-face-video");
                 if (string.IsNullOrWhiteSpace(descriptorJson))
                 {
                     NotifyError("No face detected.");
@@ -370,8 +387,8 @@ else
         var student = students.First(x => x.Id == selectedStudentId);
         await RunJsAsync(async () =>
         {
-            var credentialId = await module!.InvokeAsync<string?>(
-                "enrollFingerprint",
+            var credentialId = await Js.InvokeAsync<string?>(
+                "smsLocalBioEnrollFingerprint",
                 selectedStudentId,
                 student.FullName,
                 BrandingOptions.Value.ApplicationName);
@@ -391,7 +408,7 @@ else
     {
         await RunJsAsync(async () =>
         {
-            var credentialId = await module!.InvokeAsync<string?>("verifyFingerprint", enrolledFingerprintId);
+            var credentialId = await Js.InvokeAsync<string?>("smsLocalBioVerifyFingerprint", enrolledFingerprintId);
             if (string.IsNullOrWhiteSpace(credentialId))
             {
                 Toast.Info("Fingerprint scan cancelled.");
@@ -420,9 +437,9 @@ else
 
     private async Task RunJsAsync(Func<Task> action)
     {
-        if (module is null)
+        if (!jsReady)
         {
-            NotifyError("Biometric module is not ready.");
+            NotifyError("Biometric scripts are not ready.");
             return;
         }
 
@@ -457,17 +474,15 @@ else
     {
         dotNetRef?.Dispose();
 
-        if (module is not null)
+        try
         {
-            try
-            {
-                await module.InvokeVoidAsync("stopCamera");
-            }
-            catch (JSDisconnectedException)
-            {
-            }
-
-            await module.DisposeAsync();
+            await Js.InvokeVoidAsync("smsLocalBioStopCamera");
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        catch (JSException)
+        {
         }
     }
 }

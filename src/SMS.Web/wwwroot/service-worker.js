@@ -1,8 +1,8 @@
-const CACHE_NAME = 'sms-gate-v7';
+const CACHE_NAME = 'sms-gate-v11';
 const PRECACHE_URLS = [
     '/app.css',
-    '/js/local-biometric.js',
     '/js/pwa-register.js',
+    '/js/gate-kiosk.js',
     '/branding/company-logo.svg',
     '/branding/gate-icon-192.png',
     '/branding/gate-icon-512.png',
@@ -28,6 +28,30 @@ self.addEventListener('activate', (event) => {
     );
 });
 
+function isJsRequest(url) {
+    return url.pathname.endsWith('.js') && !url.pathname.startsWith('/_framework/');
+}
+
+async function networkFirst(request) {
+    const cache = await caches.open(CACHE_NAME);
+
+    try {
+        const response = await fetch(request);
+        if (response && response.status === 200 && response.type !== 'opaque') {
+            cache.put(request, response.clone());
+        }
+
+        return response;
+    } catch (error) {
+        const cached = await cache.match(request);
+        if (cached) {
+            return cached;
+        }
+
+        throw error;
+    }
+}
+
 self.addEventListener('fetch', (event) => {
     const { request } = event;
     if (request.method !== 'GET') {
@@ -47,10 +71,15 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
+    if (isJsRequest(url)) {
+        event.respondWith(networkFirst(request));
+        return;
+    }
+
     const isStaticAsset =
         url.pathname.endsWith('.css') ||
-        url.pathname.endsWith('.js') ||
         url.pathname.endsWith('.svg') ||
+        url.pathname.endsWith('.png') ||
         url.pathname.endsWith('.webmanifest') ||
         url.hostname === 'cdn.jsdelivr.net';
 

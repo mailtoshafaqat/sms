@@ -63,7 +63,7 @@ public class LocalBiometricService(
             }
         }
 
-        if (bestTemplate is null || bestDistance > FaceMatcher.MatchThreshold)
+        if (bestTemplate is null || bestDistance > FaceMatcher.GateMatchThreshold)
         {
             return null;
         }
