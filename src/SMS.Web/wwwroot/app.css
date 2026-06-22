@@ -1,9 +1,10 @@
 :root {
-    --hive-cream: #fffef9;
-    --hive-honey: #fff9eb;
-    --hive-gold: #f5c842;
-    --hive-amber: #fde68a;
-    --hive-brown: #78716c;
+    --brand-surface: #f8fafc;
+    --brand-surface-tint: #eff6ff;
+    --brand-accent: #2563eb;
+    --brand-accent-light: #93c5fd;
+    --brand-accent-soft: #dbeafe;
+    --hive-brown: #475569;
     --hive-blue: #2563eb;
     --space-page: 0.9rem;
     --space-card: 0.75rem;
@@ -21,7 +22,7 @@
 }
 
 .login-shell.hive-theme {
-    background: linear-gradient(160deg, #ffffff 0%, #fffef9 55%, #fff8ed 100%);
+    background: linear-gradient(160deg, #ffffff 0%, #f8fafc 55%, #eff6ff 100%);
 }
 
 .login-hive-bg {
@@ -45,7 +46,7 @@
     height: 240px;
     top: -80px;
     right: -60px;
-    background: radial-gradient(circle, rgba(253, 230, 138, 0.18) 0%, rgba(253, 230, 138, 0) 70%);
+    background: radial-gradient(circle, rgba(37, 99, 235, 0.12) 0%, rgba(37, 99, 235, 0) 70%);
 }
 
 .login-hive-float-b {
@@ -86,7 +87,7 @@
 
 .login-school-brand h1 {
     margin: 0.5rem 0 0.2rem;
-    color: #57534e;
+    color: #334155;
     font-size: 1.2rem;
     line-height: 1.25;
 }
@@ -109,7 +110,7 @@
     border-radius: 12px;
     background: #fff;
     padding: 4px;
-    box-shadow: 0 6px 18px rgba(146, 64, 14, 0.1);
+    box-shadow: 0 6px 18px rgba(37, 99, 235, 0.12);
 }
 
 .login-school-logo-lg {
@@ -127,7 +128,7 @@
     color: var(--hive-brown);
     font-size: 1.5rem;
     font-weight: 700;
-    box-shadow: 0 6px 18px rgba(146, 64, 14, 0.1);
+    box-shadow: 0 6px 18px rgba(37, 99, 235, 0.12);
 }
 
 .login-mobile-brand {
@@ -143,7 +144,7 @@
 .login-art-image {
     width: min(100%, 360px);
     height: auto;
-    filter: drop-shadow(0 18px 28px rgba(146, 64, 14, 0.12));
+    filter: drop-shadow(0 18px 28px rgba(37, 99, 235, 0.14));
 }
 
 .login-art-tagline {
@@ -177,7 +178,7 @@
 
 .login-brand p {
     margin: 0.35rem 0 0;
-    color: #a16207;
+    color: #1d4ed8;
 }
 
 .login-panel .card,
@@ -210,8 +211,8 @@
 }
 
 .login-panel .field-input:focus {
-    border-color: #d6d3d1;
-    box-shadow: 0 0 0 3px rgba(253, 230, 138, 0.35);
+    border-color: #93c5fd;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
 }
 
 .login-panel .form-grid {
@@ -247,16 +248,16 @@
 
 .btn-hive,
 .btn.btn-hive {
-    background: linear-gradient(135deg, #fde68a 0%, #f5d565 100%);
-    color: #44403c;
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    color: #fff;
     font-weight: 600;
-    border: 1px solid #fcd34d;
+    border: 1px solid #1d4ed8;
 }
 
 .btn-hive:hover,
 .btn.btn-hive:hover {
-    filter: brightness(1.02);
-    color: #292524;
+    filter: brightness(1.05);
+    color: #fff;
 }
 
 .powered-by {
@@ -281,7 +282,7 @@
 }
 
 .powered-by-link:hover {
-    color: var(--hive-gold);
+    color: var(--brand-accent);
 }
 
 .powered-by-link:hover strong {
@@ -295,7 +296,7 @@
     border-radius: 8px;
     background: #fff;
     padding: 2px;
-    box-shadow: 0 0 0 1px #fde68a;
+    box-shadow: 0 0 0 1px #bfdbfe;
 }
 
 .powered-by strong {
@@ -350,7 +351,8 @@
 
 .main-footer {
     padding: 0.75rem 1rem 0.9rem;
-    background: linear-gradient(180deg, #fff 0%, #fffef9 100%);
+    text-align: center;
+    background: linear-gradient(180deg, #fff 0%, #f8fafc 100%);
     border-top: 1px solid #f3f4f6;
 }
 
@@ -479,6 +481,11 @@ html, body {
     border-top: 1px solid #e5e7eb;
     color: #64748b;
     font-size: 0.85rem;
+    text-align: center;
+}
+
+.app-footer .powered-by {
+    justify-content: center;
 }
 
 .app-footer-brand {
@@ -487,6 +494,12 @@ html, body {
 
 .app-footer-note {
     margin: 0;
+}
+
+.app-footer-copyright {
+    margin: 0.45rem 0 0;
+    font-size: 0.78rem;
+    color: #94a3b8;
 }
 
 .brand {
@@ -2685,7 +2698,7 @@ th {
 .gate-kiosk-secure-hint {
     margin-bottom: 0 !important;
     font-size: 0.85rem;
-    color: #fde68a;
+    color: #93c5fd;
 }
 
 .gate-kiosk-enrolled {

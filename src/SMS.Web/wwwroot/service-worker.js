@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sms-gate-v12';
+const CACHE_NAME = 'sms-gate-v13';
 const PRECACHE_URLS = [
     '/app.css',
     '/js/pwa-register.js',

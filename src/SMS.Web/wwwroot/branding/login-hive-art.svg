@@ -1,20 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 420" fill="none" role="img" aria-label="Hive illustration">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 420" fill="none" role="img" aria-label="ARTechnologies hive illustration">
   <defs>
     <linearGradient id="beeHive" x1="256" y1="110" x2="256" y2="250" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#fde68a"/>
-      <stop offset="45%" stop-color="#fbbf24"/>
-      <stop offset="100%" stop-color="#d97706"/>
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="50%" stop-color="#0ea5e9"/>
+      <stop offset="100%" stop-color="#2563eb"/>
     </linearGradient>
   </defs>
-  <circle cx="210" cy="210" r="180" fill="#fffbeb" stroke="#fde68a" stroke-width="2"/>
+  <circle cx="210" cy="210" r="180" fill="#eff6ff" stroke="#bfdbfe" stroke-width="2"/>
   <g opacity="0.85">
-    <path d="M120 95 L170 95 L195 138 L170 181 L120 181 L95 138 Z" fill="#fef3c7" stroke="#fbbf24" stroke-width="2"/>
-    <path d="M250 95 L300 95 L325 138 L300 181 L250 181 L225 138 Z" fill="#fef9c3" stroke="#fbbf24" stroke-width="2"/>
-    <path d="M70 170 L120 170 L145 213 L120 256 L70 256 L45 213 Z" fill="#fff7ed" stroke="#f59e0b" stroke-width="2"/>
-    <path d="M185 170 L235 170 L260 213 L235 256 L185 256 L160 213 Z" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/>
-    <path d="M300 170 L350 170 L375 213 L350 256 L300 256 L275 213 Z" fill="#fef9c3" stroke="#f59e0b" stroke-width="2"/>
-    <path d="M120 245 L170 245 L195 288 L170 331 L120 331 L95 288 Z" fill="#fde68a" stroke="#fbbf24" stroke-width="2"/>
-    <path d="M250 245 L300 245 L325 288 L300 331 L250 331 L225 288 Z" fill="#fef3c7" stroke="#fbbf24" stroke-width="2"/>
+    <path d="M120 95 L170 95 L195 138 L170 181 L120 181 L95 138 Z" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
+    <path d="M250 95 L300 95 L325 138 L300 181 L250 181 L225 138 Z" fill="#e0f2fe" stroke="#60a5fa" stroke-width="2"/>
+    <path d="M70 170 L120 170 L145 213 L120 256 L70 256 L45 213 Z" fill="#f0f9ff" stroke="#3b82f6" stroke-width="2"/>
+    <path d="M185 170 L235 170 L260 213 L235 256 L185 256 L160 213 Z" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+    <path d="M300 170 L350 170 L375 213 L350 256 L300 256 L275 213 Z" fill="#e0f2fe" stroke="#3b82f6" stroke-width="2"/>
+    <path d="M120 245 L170 245 L195 288 L170 331 L120 331 L95 288 Z" fill="#bfdbfe" stroke="#60a5fa" stroke-width="2"/>
+    <path d="M250 245 L300 245 L325 288 L300 331 L250 331 L225 288 Z" fill="#dbeafe" stroke="#60a5fa" stroke-width="2"/>
   </g>
   <g transform="translate(210 198) scale(0.76) translate(-256 -180)">
     <path d="M 193.5 159 L 97 159 A 21 21 0 0 0 76 180 A 21 21 0 0 0 97 201 L 193.5 201" fill="none" stroke="url(#beeHive)" stroke-width="9" stroke-linejoin="round"/>
@@ -24,7 +24,7 @@
       <circle cx="346" cy="180" r="7"/><circle cx="373" cy="180" r="7"/><circle cx="400" cy="180" r="7"/>
     </g>
     <polygon points="256,113 311.5,146 311.5,214 256,247 200.5,214 200.5,146" fill="url(#beeHive)" stroke="url(#beeHive)" stroke-width="10" stroke-linejoin="round"/>
-    <circle cx="236" cy="174" r="9" fill="#78350f"/><circle cx="276" cy="174" r="9" fill="#78350f"/>
+    <circle cx="236" cy="174" r="9" fill="#0c4a6e"/><circle cx="276" cy="174" r="9" fill="#0c4a6e"/>
     <path d="M 226 136 L 194 88" stroke="url(#beeHive)" stroke-width="9" stroke-linecap="round"/>
     <path d="M 286 136 L 318 88" stroke="url(#beeHive)" stroke-width="9" stroke-linecap="round"/>
     <circle cx="194" cy="88" r="10" fill="url(#beeHive)"/><circle cx="318" cy="88" r="10" fill="url(#beeHive)"/>
