@@ -1,0 +1,166 @@
+@page "/attendance/staff"
+@rendermode InteractiveServer
+@using SMS.Application.DTOs
+@using SMS.Application.Interfaces
+@using SMS.Domain.Enums
+@inject IStaffAttendanceService StaffAttendanceService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ToastService Toast
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Coordinator")]
+
+<PageTitle>Staff Attendance</PageTitle>
+
+<PageIntro Title="Staff Attendance" Subtitle="Mark daily attendance for teachers and staff. Only active staff from Settings → Staff & Sections appear here." />
+
+<div class="card toolbar-card">
+    <InputDate @bind-Value="selectedDate" class="field-input toolbar-field" />
+    <button class="btn btn-icon" data-tooltip="Load staff sheet" @onclick="LoadSheetAsync">
+        <AppIcon Name="load" />
+        <span>Load</span>
+    </button>
+    <button class="btn btn-secondary btn-icon" data-tooltip="Save staff attendance" @onclick="SaveAsync" disabled="@(!canEdit)">
+        <AppIcon Name="save" />
+        <span>Save</span>
+    </button>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(blockReason))
+{
+    <div class="alert alert-info">@blockReason</div>
+}
+
+@if (rows.Count > 0 && canEdit)
+{
+    <div class="card bulk-actions-card">
+        <span class="bulk-actions-label">Bulk mark all staff:</span>
+        <button type="button" class="btn btn-secondary btn-icon" @onclick="() => BulkSetStatus(AttendanceStatus.Present)">
+            <AppIcon Name="success" />
+            <span>All present</span>
+        </button>
+        <button type="button" class="btn btn-secondary btn-icon" @onclick="() => BulkSetStatus(AttendanceStatus.Absent)">
+            <AppIcon Name="error" />
+            <span>All absent</span>
+        </button>
+        <button type="button" class="btn btn-secondary btn-icon" @onclick="() => BulkSetStatus(AttendanceStatus.Leave)">
+            <AppIcon Name="info" />
+            <span>All leave</span>
+        </button>
+    </div>
+}
+
+@if (rows.Count == 0)
+{
+    <div class="card empty-state">
+        <AppIcon Name="users" />
+        <p>No active staff found. Add teachers under Settings → Staff & Sections, then load the sheet.</p>
+    </div>
+}
+else
+{
+    <div class="table-responsive attendance-sheet">
+        <table>
+            <thead>
+                <tr>
+                    <th>Code</th>
+                    <th>Staff member</th>
+                    <th>Status</th>
+                    <th>Remarks</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in rows)
+                {
+                    <tr class="row-status-@GetRowTone(row.Status)">
+                        <td>@row.EmployeeCode</td>
+                        <td>
+                            <div class="student-cell">
+                                <strong>@row.StaffName</strong>
+                                <AttendanceStatusBadge Status="row.Status" Compact="true" />
+                            </div>
+                        </td>
+                        <td class="cell-status">
+                            <InputSelect @bind-Value="row.Status" class="field-select" disabled="@(!canEdit)">
+                                @foreach (var status in Enum.GetValues<AttendanceStatus>())
+                                {
+                                    <option value="@status">@status</option>
+                                }
+                            </InputSelect>
+                        </td>
+                        <td class="cell-remarks">
+                            <InputText @bind-Value="row.Remarks" class="field-input" placeholder="Optional remarks..." disabled="@(!canEdit)" />
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<StaffAttendanceRowDto> rows = [];
+    private DateTime selectedDate = DateTime.Today;
+    private bool canEdit = true;
+    private string? blockReason;
+
+    protected override async Task OnInitializedAsync() => await LoadSheetAsync();
+
+    private async Task LoadSheetAsync()
+    {
+        try
+        {
+            var date = DateOnly.FromDateTime(selectedDate);
+            var sheet = await StaffAttendanceService.GetSheetAsync(date);
+            rows = sheet.Rows.ToList();
+            canEdit = sheet.CanEdit;
+            blockReason = sheet.BlockReason;
+        }
+        catch (Exception ex)
+        {
+            rows = [];
+            canEdit = false;
+            blockReason = null;
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!canEdit)
+        {
+            Toast.Error(blockReason ?? "Staff attendance cannot be edited for this date.");
+            return;
+        }
+
+        try
+        {
+            var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var date = DateOnly.FromDateTime(selectedDate);
+            await StaffAttendanceService.SaveSheetAsync(date, rows, userId);
+            Toast.Success("Staff attendance saved.");
+            await LoadSheetAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private void BulkSetStatus(AttendanceStatus status)
+    {
+        foreach (var row in rows)
+        {
+            row.Status = status;
+        }
+    }
+
+    private static string GetRowTone(AttendanceStatus status) => status switch
+    {
+        AttendanceStatus.Present => "present",
+        AttendanceStatus.Late => "late",
+        AttendanceStatus.Absent => "absent",
+        AttendanceStatus.Holiday => "holiday",
+        AttendanceStatus.Leave => "leave",
+        _ => "unmarked"
+    };
+}

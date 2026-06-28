@@ -28,7 +28,9 @@
             <TopBarActions />
         </header>
         <section class="page-body">
-            @Body
+            <GateKeeperRouteGuard>
+                @Body
+            </GateKeeperRouteGuard>
         </section>
         <AppFooter CssClass="main-footer" />
     </main>

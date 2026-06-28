@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using SMS.Application.DTOs;
 using SMS.Application.Interfaces.Repositories;
 using SMS.Domain.Entities.Attendance;
 using SMS.Domain.Entities.Shared;
@@ -16,7 +17,7 @@ public class StudentRepository(
             factory,
             async db =>
             {
-                var query = BuildActiveEnrollmentQuery(db, academicYearId, search);
+                var query = BuildEnrollmentQuery(db, academicYearId, search);
                 return (IReadOnlyList<StudentEnrollment>)await query
                     .OrderBy(x => x.Section.ClassRoom.Name)
                     .ThenBy(x => x.Section.Name)
@@ -31,12 +32,13 @@ public class StudentRepository(
         int skip,
         int take,
         IReadOnlyList<int>? sectionIds = null,
+        StudentListFilter filter = StudentListFilter.ActiveOnly,
         CancellationToken cancellationToken = default) =>
         DbContextAccess.ReadAsync(
             factory,
             async db =>
             {
-                var query = BuildActiveEnrollmentQuery(db, academicYearId, search, sectionIds);
+                var query = BuildEnrollmentQuery(db, academicYearId, search, sectionIds, filter);
                 var totalCount = await query.CountAsync(cancellationToken);
                 var items = await query
                     .OrderBy(x => x.Section.ClassRoom.Name)
@@ -50,17 +52,25 @@ public class StudentRepository(
             },
             cancellationToken);
 
-    private static IQueryable<StudentEnrollment> BuildActiveEnrollmentQuery(
+    private static IQueryable<StudentEnrollment> BuildEnrollmentQuery(
         AppDbContext db,
         int academicYearId,
         string? search,
-        IReadOnlyList<int>? sectionIds = null)
+        IReadOnlyList<int>? sectionIds = null,
+        StudentListFilter filter = StudentListFilter.ActiveOnly)
     {
         var query = db.StudentEnrollments.AsNoTracking()
             .Include(x => x.Student)
             .Include(x => x.Section)
             .ThenInclude(x => x.ClassRoom)
-            .Where(x => x.AcademicYearId == academicYearId && x.IsActive);
+            .Where(x => x.AcademicYearId == academicYearId);
+
+        query = filter switch
+        {
+            StudentListFilter.InactiveOnly => query.Where(x => x.Student.Status != StudentStatus.Active || !x.IsActive),
+            StudentListFilter.All => query,
+            _ => query.Where(x => x.Student.Status == StudentStatus.Active && x.IsActive)
+        };
 
         if (sectionIds is { Count: > 0 })
         {

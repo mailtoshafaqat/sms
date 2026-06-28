@@ -27,7 +27,7 @@ public class AttendanceRepository(
                 .Include(x => x.Student)
                 .Include(x => x.Section)
                 .ThenInclude(x => x.ClassRoom)
-                .Where(x => x.SectionId == sectionId && x.AcademicYearId == academicYearId && x.IsActive && x.Student.IsActive)
+                .Where(x => x.SectionId == sectionId && x.AcademicYearId == academicYearId && x.IsActive && x.Student.IsActive && x.Student.Status == StudentStatus.Active)
                 .OrderBy(x => x.RollNumber)
                 .ToListAsync(cancellationToken),
             cancellationToken);
@@ -133,7 +133,7 @@ public class AttendanceRepository(
                 .Include(x => x.Student)
                 .Include(x => x.Section)
                 .ThenInclude(x => x.ClassRoom)
-                .Where(x => x.AcademicYearId == academicYearId && x.IsActive && x.Student.IsActive)
+                .Where(x => x.AcademicYearId == academicYearId && x.IsActive && x.Student.IsActive && x.Student.Status == StudentStatus.Active)
                 .ToListAsync(cancellationToken),
             cancellationToken);
 

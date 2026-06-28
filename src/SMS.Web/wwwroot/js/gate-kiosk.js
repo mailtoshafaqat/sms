@@ -78,7 +78,7 @@
         await mod.loadFaceModels();
         await mod.startCamera(videoElementId, facingMode);
         const scanInterval = /android|iphone|ipad|ipod/i.test(navigator.userAgent)
-            ? Math.max(intervalMs, 1600)
+            ? Math.max(intervalMs, 2200)
             : intervalMs;
         mod.startAutoFaceScan(videoElementId, dotNetRef, scanInterval, true);
     };
@@ -93,7 +93,7 @@
         const mod = await getGateModule();
         await mod.startCamera(videoElementId, facingMode);
         const scanInterval = /android|iphone|ipad|ipod/i.test(navigator.userAgent)
-            ? Math.max(intervalMs, 1600)
+            ? Math.max(intervalMs, 2200)
             : intervalMs;
         mod.startAutoFaceScan(videoElementId, dotNetRef, scanInterval, true);
     };
@@ -102,6 +102,12 @@
         const mod = await getGateModule();
         await mod.loadFaceModels();
         await mod.scanGateOnce(videoElementId, dotNetRef);
+    };
+
+    window.smsGateEnrollSample = async (videoElementId, studentId) => {
+        const mod = await getGateModule();
+        await mod.loadFaceModels();
+        return mod.enrollGateFaceSample(videoElementId, studentId);
     };
 
     // Window globals for Local Biometric Test (reliable on mobile PWA; avoids stale ES module interop).
@@ -123,6 +129,12 @@
         const mod = await getGateModule();
         await mod.loadFaceModels();
         return mod.captureFaceDescriptorJson(videoElementId);
+    };
+
+    window.smsLocalBioCaptureEnrollmentBurst = async (videoElementId, sampleCount = 3) => {
+        const mod = await getGateModule();
+        await mod.loadFaceModels();
+        return mod.captureEnrollmentBurst(videoElementId, sampleCount);
     };
 
     window.smsLocalBioStartAutoScan = async (videoElementId, dotNetRef, intervalMs = 2500) => {

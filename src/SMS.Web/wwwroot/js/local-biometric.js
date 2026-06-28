@@ -1,4 +1,4 @@
-const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model';
+const MODEL_URL = '/models/face-api';
 let mediaStream = null;
 let modelsLoaded = false;
 let scanTimer = null;
@@ -69,10 +69,21 @@ export async function loadFaceModels() {
 export async function startCamera(videoElementId, facingMode = 'user') {
     ensureCameraAccess();
     await stopCamera();
-    mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: facingMode }, width: { ideal: 640 }, height: { ideal: 480 } },
-        audio: false
-    });
+
+    const videoConstraints = {
+        facingMode: { ideal: facingMode },
+        width: { ideal: 640, min: 320 },
+        height: { ideal: 480, min: 240 }
+    };
+
+    try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+            video: videoConstraints,
+            audio: false
+        });
+    } catch {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    }
 
     const video = document.getElementById(videoElementId);
     if (!video) {
@@ -80,6 +91,7 @@ export async function startCamera(videoElementId, facingMode = 'user') {
     }
 
     video.srcObject = mediaStream;
+    await waitForVideoReady(video);
     await video.play();
     return true;
 }
@@ -97,10 +109,85 @@ export async function stopCamera() {
 
 function getDetectorOptions() {
     if (useTinyDetector) {
-        return new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.35 });
+        return new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.3 });
     }
 
-    return new faceapi.SsdMobilenetv1Options({ minConfidence: 0.2 });
+    return new faceapi.SsdMobilenetv1Options({ minConfidence: 0.35 });
+}
+
+function normalizeDescriptor(values) {
+    let sum = 0;
+    for (let i = 0; i < values.length; i += 1) {
+        sum += values[i] * values[i];
+    }
+
+    if (sum <= 1e-12) {
+        return values;
+    }
+
+    const inv = 1 / Math.sqrt(sum);
+    return values.map((value) => value * inv);
+}
+
+function isFaceUsable(detection, video, relaxed = false) {
+    const score = detection.detection?.score ?? 1;
+    const minScore = relaxed ? 0.28 : (useTinyDetector ? 0.32 : 0.35);
+    if (score < minScore) {
+        return false;
+    }
+
+    const frameArea = video.videoWidth * video.videoHeight;
+    const faceArea = detection.detection?.box?.area ?? 0;
+    const minRatio = relaxed ? 0.035 : (useTinyDetector ? 0.045 : 0.06);
+    if (frameArea > 0 && faceArea / frameArea < minRatio) {
+        return false;
+    }
+
+    return true;
+}
+
+async function waitForVideoReady(video) {
+    if (video.readyState >= 2 && video.videoWidth > 0) {
+        return;
+    }
+
+    await new Promise((resolve) => {
+        const timeout = setTimeout(resolve, 3000);
+        const done = () => {
+            clearTimeout(timeout);
+            video.removeEventListener('loadeddata', done);
+            resolve();
+        };
+        video.addEventListener('loadeddata', done);
+    });
+}
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function averageDescriptors(descriptors) {
+    if (!descriptors.length) {
+        return null;
+    }
+
+    if (descriptors.length === 1) {
+        return descriptors[0];
+    }
+
+    const length = descriptors[0].length;
+    const averaged = new Array(length).fill(0);
+    for (const descriptor of descriptors) {
+        for (let i = 0; i < length; i += 1) {
+            averaged[i] += descriptor[i];
+        }
+    }
+
+    for (let i = 0; i < length; i += 1) {
+        averaged[i] /= descriptors.length;
+    }
+
+    return Array.from(normalizeDescriptor(averaged));
 }
 
 async function detectBestFace(video, options) {
@@ -125,7 +212,25 @@ async function detectBestFace(video, options) {
     return all.sort((a, b) => b.detection.box.area - a.detection.box.area)[0];
 }
 
-export async function captureFaceDescriptor(videoElementId) {
+async function captureFaceDetection(video, relaxed = false) {
+    const options = getDetectorOptions();
+    const detection = await detectBestFace(video, options);
+
+    if (!detection?.descriptor) {
+        return null;
+    }
+
+    if (!isFaceUsable(detection, video, relaxed)) {
+        return null;
+    }
+
+    return {
+        descriptor: Array.from(normalizeDescriptor(Array.from(detection.descriptor))),
+        score: detection.detection?.score ?? 0
+    };
+}
+
+export async function captureFaceDescriptor(videoElementId, relaxed = false) {
     ensureFaceApi();
     await loadFaceModels();
 
@@ -134,44 +239,117 @@ export async function captureFaceDescriptor(videoElementId) {
         throw new Error(`Video element '${videoElementId}' not found.`);
     }
 
-    let attempts = 0;
-    while ((video.readyState < 2 || video.videoWidth === 0) && attempts < 15) {
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        attempts += 1;
-    }
-
+    await waitForVideoReady(video);
     if (video.readyState < 2 || video.videoWidth === 0) {
         return null;
     }
 
     try {
-        const options = getDetectorOptions();
-        const detection = await detectBestFace(video, options);
-
-        if (!detection?.descriptor) {
-            return null;
-        }
-
-        return Array.from(detection.descriptor);
+        const result = await captureFaceDetection(video, relaxed);
+        return result?.descriptor ?? null;
     } catch (error) {
         console.warn('Face detection failed:', error);
         return null;
     }
 }
 
+/** Gate scan: pick the single best frame (do not average — angles mix poorly). */
+export async function captureGateScanDescriptor(videoElementId) {
+    ensureFaceApi();
+    await loadFaceModels();
+
+    const video = document.getElementById(videoElementId);
+    if (!video) {
+        throw new Error(`Video element '${videoElementId}' not found.`);
+    }
+
+    await waitForVideoReady(video);
+    if (video.readyState < 2 || video.videoWidth === 0) {
+        return null;
+    }
+
+    let best = null;
+    const attempts = useTinyDetector ? 5 : 4;
+    for (let i = 0; i < attempts; i += 1) {
+        try {
+            const result = await captureFaceDetection(video, true);
+            if (result && (!best || result.score > best.score)) {
+                best = result;
+            }
+        } catch (error) {
+            console.warn('Gate scan capture attempt failed:', error);
+        }
+
+        if (i < attempts - 1) {
+            await sleep(100);
+        }
+    }
+
+    return best?.descriptor ?? null;
+}
+
+/** Enrollment: capture several angles in one click. */
+export async function captureEnrollmentBurst(videoElementId, sampleCount = 3) {
+    ensureFaceApi();
+    await loadFaceModels();
+
+    const video = document.getElementById(videoElementId);
+    if (!video) {
+        throw new Error(`Video element '${videoElementId}' not found.`);
+    }
+
+    await waitForVideoReady(video);
+    const descriptors = [];
+    for (let i = 0; i < sampleCount; i += 1) {
+        try {
+            const result = await captureFaceDetection(video, true);
+            if (result) {
+                descriptors.push(result.descriptor);
+            }
+        } catch (error) {
+            console.warn('Enrollment burst capture failed:', error);
+        }
+
+        if (i < sampleCount - 1) {
+            await sleep(250);
+        }
+    }
+
+    return descriptors;
+}
+
+export async function captureStableFaceDescriptor(videoElementId, sampleCount = 3) {
+    const samples = [];
+    for (let i = 0; i < sampleCount; i += 1) {
+        const descriptor = await captureGateScanDescriptor(videoElementId);
+        if (descriptor) {
+            return descriptor;
+        }
+
+        if (i < sampleCount - 1) {
+            await sleep(140);
+        }
+    }
+
+    return averageDescriptors(samples);
+}
+
 export async function captureFaceDescriptorJson(videoElementId) {
-    const descriptor = await captureFaceDescriptor(videoElementId);
+    const descriptor = await captureGateScanDescriptor(videoElementId);
     return descriptor ? JSON.stringify(descriptor) : null;
 }
 
 function faceDistance(left, right) {
+    const normalizedLeft = normalizeDescriptor(left);
+    const normalizedRight = normalizeDescriptor(right);
+
     if (typeof faceapi?.euclideanDistance === 'function') {
-        return faceapi.euclideanDistance(left, right);
+        return faceapi.euclideanDistance(normalizedLeft, normalizedRight);
     }
 
     let sum = 0;
-    for (let i = 0; i < left.length; i += 1) {
-        const delta = left[i] - right[i];
+    for (let i = 0; i < normalizedLeft.length; i += 1) {
+        const delta = normalizedLeft[i] - normalizedRight[i];
         sum += delta * delta;
     }
 
@@ -179,11 +357,13 @@ function faceDistance(left, right) {
 }
 
 async function recordGateScan(descriptor) {
+    const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+    const matchMode = isMobile ? 1 : 0;
     const scanResponse = await fetch('/attendance/gate/scan', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ descriptor })
+        body: JSON.stringify({ descriptor, matchMode })
     });
 
     if (!scanResponse.ok) {
@@ -193,9 +373,9 @@ async function recordGateScan(descriptor) {
     return readApiResult(await scanResponse.json());
 }
 
-const GATE_MATCH_THRESHOLD = 0.82;
 let gateEnrollments = null;
 let scanPausedUntil = 0;
+let lastNoFaceHintAt = 0;
 
 function formatGateMessage(raw, success) {
     if (!raw) {
@@ -218,8 +398,8 @@ function formatGateMessage(raw, success) {
     }
 
     const lower = raw.toLowerCase();
-    if (lower.includes('not recognized') || lower.includes('enroll')) {
-        return 'Face not recognized. Enroll on this phone first.';
+    if (lower.includes('not recognized') || lower.includes('enroll') || lower.includes('ambiguous')) {
+        return 'Face not recognized. Enroll at Biometric Test first.';
     }
 
     if (lower.includes('duplicate') || lower.includes('already') || lower.includes('wait')) {
@@ -292,23 +472,20 @@ async function runGateScanTick(videoElementId, dotNetRef, forceReload) {
 
     setGateFrameVisual('scanning');
 
-    const descriptor = await captureFaceDescriptor(videoElementId);
+    const descriptor = await captureGateScanDescriptor(videoElementId);
     if (!descriptor) {
-        setGateFrameVisual('scanning');
+        const now = Date.now();
+        if (now - lastNoFaceHintAt > 4000) {
+            lastNoFaceHintAt = now;
+            setGateFrameVisual('error', 'Face not detected');
+            await notifyGate(dotNetRef, false, false, 'Face not detected. Stand closer and look at the camera.');
+        } else {
+            setGateFrameVisual('scanning');
+        }
         return;
     }
 
     const result = await recordGateScan(descriptor);
-    if (!result.success) {
-        const clientMatch = matchGateEnrollment(descriptor);
-        if (clientMatch) {
-            const externalId = clientMatch.externalId ?? clientMatch.ExternalId;
-            const recordResult = await postGateRecord(externalId);
-            await notifyGate(dotNetRef, true, recordResult.success, recordResult.message);
-            return;
-        }
-    }
-
     await notifyGate(dotNetRef, true, result.success, result.message);
 }
 
@@ -338,32 +515,31 @@ export async function loadGateEnrollments(force = false) {
     return gateEnrollments;
 }
 
-function matchGateEnrollment(descriptor) {
-    ensureFaceApi();
-
-    if (!gateEnrollments || gateEnrollments.length === 0) {
-        return null;
+export async function enrollGateFaceSample(videoElementId, studentId) {
+    const descriptor = await captureGateScanDescriptor(videoElementId);
+    if (!descriptor) {
+        return { success: false, message: 'No face detected. Stand closer, face the camera, and try again.' };
     }
 
-    let best = null;
-    let bestDistance = Number.POSITIVE_INFINITY;
+    const response = await fetch('/attendance/gate/enroll', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId, descriptor })
+    });
 
-    for (const entry of gateEnrollments) {
-        const descriptors = entry.descriptors ?? entry.Descriptors ?? [];
-        for (const stored of descriptors) {
-            const distance = faceDistance(descriptor, stored);
-            if (distance < bestDistance) {
-                bestDistance = distance;
-                best = entry;
-            }
-        }
+    if (!response.ok) {
+        return { success: false, message: `Enroll failed (${response.status}).` };
     }
 
-    if (!best || bestDistance > GATE_MATCH_THRESHOLD) {
-        return null;
-    }
-
-    return best;
+    const result = await response.json();
+    await loadGateEnrollments(true);
+    return {
+        success: !!(result?.success ?? result?.Success),
+        message: result?.message ?? result?.Message ?? '',
+        sampleCount: result?.sampleCount ?? result?.SampleCount ?? 0,
+        gateReady: !!(result?.gateReady ?? result?.GateReady)
+    };
 }
 
 async function postGateRecord(externalId) {

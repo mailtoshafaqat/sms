@@ -18,8 +18,16 @@ public class SchoolSettingsDto
     public WeeklyOffDays WeeklyOffDays { get; set; } = WeeklyOffDays.Sunday;
     public bool NotifyAbsent { get; set; } = true;
     public bool NotifyLate { get; set; } = true;
+    public bool NotifyCheckIn { get; set; } = true;
+    public bool NotifyCheckOut { get; set; } = true;
+    public bool NotifyLeave { get; set; } = true;
+    public bool NotifyPresent { get; set; } = true;
     public string? AbsentNotificationTemplate { get; set; }
     public string? LateNotificationTemplate { get; set; }
+    public string? CheckInNotificationTemplate { get; set; }
+    public string? CheckOutNotificationTemplate { get; set; }
+    public string? LeaveNotificationTemplate { get; set; }
+    public string? PresentNotificationTemplate { get; set; }
 }
 
 public record StudentListItemDto(
@@ -31,7 +39,9 @@ public record StudentListItemDto(
     string SectionName,
     string? Phone,
     bool IsActive,
-    string? PhotoPath);
+    string? PhotoPath,
+    StudentStatus Status,
+    string? StatusNote);
 
 public record StudentFormDto
 {
@@ -48,7 +58,8 @@ public record StudentFormDto
     public string? FingerprintUserId { get; set; }
     public string? FaceUserId { get; set; }
     public string? BiometricUserId { get; set; }
-    public bool IsActive { get; set; } = true;
+    public StudentStatus Status { get; set; } = StudentStatus.Active;
+    public string? StatusNote { get; set; }
 }
 
 public record ClassSectionOptionDto(int SectionId, string DisplayName);
@@ -259,11 +270,29 @@ public record AttendanceNotificationDto(
     DateTime? SentAt,
     string WhatsAppUrl);
 
-public record GateFaceScanRequest(float[] Descriptor);
+public record GateFaceScanRequest(float[] Descriptor, FaceMatchMode MatchMode = FaceMatchMode.Gate);
 
 public record GateFaceScanResponse(bool Success, string Message, string? StudentName = null);
 
 public record GateFaceRecordRequest(string ExternalId);
 
+public record GateFaceEnrollRequest(int StudentId, float[] Descriptor);
+
+public record GateFaceEnrollResponse(bool Success, string Message, int SampleCount, bool GateReady);
+
 public record GateFaceEnrollmentDto(string ExternalId, string StudentName, IReadOnlyList<float[]> Descriptors);
+
+public record StaffAttendanceRowDto
+{
+    public int TeacherId { get; set; }
+    public string EmployeeCode { get; set; } = string.Empty;
+    public string StaffName { get; set; } = string.Empty;
+    public AttendanceStatus Status { get; set; }
+    public string? Remarks { get; set; }
+}
+
+public record StaffAttendanceSheetResultDto(
+    IReadOnlyList<StaffAttendanceRowDto> Rows,
+    bool CanEdit,
+    string? BlockReason);
 

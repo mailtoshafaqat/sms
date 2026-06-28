@@ -65,6 +65,7 @@ public class ManualQaTests : IClassFixture<WebApplicationFactory<Program>>
             ("/students/promote", true, true, false),
             ("/attendance/daily", true, true, true),
             ("/attendance/manual", true, true, true),
+            ("/attendance/staff", true, true, false),
             ("/attendance/register", true, true, true),
             ("/attendance/pattern-report", true, true, true),
             ("/attendance/late-report", true, true, true),
@@ -449,11 +450,24 @@ public class ManualQaTests : IClassFixture<WebApplicationFactory<Program>>
         var today = DateOnly.FromDateTime(DateTime.Today);
         var from = today.AddDays(-29);
 
-        var existing = await studentService.GetStudentsAsync(search: demoCode, pageSize: 5);
+        var existing = await studentService.GetStudentsAsync(search: demoCode, pageSize: 5, filter: StudentListFilter.All);
         int studentId;
         if (existing.Items.FirstOrDefault(x => x.StudentCode == demoCode) is { } found)
         {
             studentId = found.Id;
+            if (!found.IsActive || found.Status != StudentStatus.Active)
+            {
+                studentId = await studentService.SaveStudentAsync(new StudentFormDto
+                {
+                    Id = found.Id,
+                    StudentCode = demoCode,
+                    FirstName = "Pattern",
+                    LastName = "Demo",
+                    SectionId = sectionId,
+                    RollNumber = "PAT-1",
+                    Status = StudentStatus.Active
+                });
+            }
         }
         else
         {
@@ -464,7 +478,7 @@ public class ManualQaTests : IClassFixture<WebApplicationFactory<Program>>
                 LastName = "Demo",
                 SectionId = sectionId,
                 RollNumber = "PAT-1",
-                IsActive = true
+                Status = StudentStatus.Active
             });
         }
 
@@ -554,7 +568,7 @@ public class ManualQaTests : IClassFixture<WebApplicationFactory<Program>>
             LastName = "QA",
             SectionId = sections[0].SectionId,
             RollNumber = $"FP{suffix}",
-            IsActive = true
+            Status = StudentStatus.Active
         });
 
         try
@@ -590,7 +604,7 @@ public class ManualQaTests : IClassFixture<WebApplicationFactory<Program>>
             LastName = "SaveA",
             SectionId = sectionId,
             RollNumber = $"A{suffix}",
-            IsActive = true
+            Status = StudentStatus.Active
         });
 
         var id2 = await studentService.SaveStudentAsync(new StudentFormDto
@@ -599,7 +613,7 @@ public class ManualQaTests : IClassFixture<WebApplicationFactory<Program>>
             LastName = "SaveB",
             SectionId = sectionId,
             RollNumber = $"B{suffix}",
-            IsActive = true
+            Status = StudentStatus.Active
         });
 
         try
@@ -641,7 +655,7 @@ public class ManualQaTests : IClassFixture<WebApplicationFactory<Program>>
             LastName = "Test",
             SectionId = sections[0].SectionId,
             RollNumber = $"PH{suffix}",
-            IsActive = true
+            Status = StudentStatus.Active
         });
 
         try

@@ -4,6 +4,7 @@
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.AspNetCore.Identity
 @using SMS.Infrastructure.Identity
+@using SMS.Domain.Common
 @using SMS.Web.Components.Layout
 @attribute [AllowAnonymous]
 @inject SignInManager<ApplicationUser> SignInManager
@@ -73,7 +74,12 @@
 
         if (result.Succeeded)
         {
-            Navigation.NavigateTo("/", forceLoad: true);
+            var roles = await UserManager.GetRolesAsync(user);
+            var gateKeeperOnly = roles.Contains(RoleNames.GateKeeper)
+                && !roles.Contains(RoleNames.Admin)
+                && !roles.Contains(RoleNames.Coordinator)
+                && !roles.Contains(RoleNames.Teacher);
+            Navigation.NavigateTo(gateKeeperOnly ? "/attendance/gate" : "/", forceLoad: true);
             return;
         }
 

@@ -51,6 +51,7 @@ public static class DependencyInjection
         services.AddScoped<ILocalBiometricRepository, LocalBiometricRepository>();
         services.AddScoped<IFileStorageService, FileStorageService>();
         services.AddScoped<IAttendanceNotificationRepository, AttendanceNotificationRepository>();
+        services.AddScoped<IStaffAttendanceRepository, StaffAttendanceRepository>();
         services.AddScoped<IExceptionLogRepository, ExceptionLogRepository>();
         services.AddScoped<IExceptionLogService, ExceptionLogService>();
         services.AddScoped<IMonthlyRegisterExportService, MonthlyRegisterExportService>();

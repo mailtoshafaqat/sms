@@ -5,6 +5,8 @@
 @using Microsoft.AspNetCore.Components.Forms
 @using SMS.Application.DTOs
 @using SMS.Application.Interfaces
+@using SMS.Domain.Common
+@using SMS.Domain.Enums
 @inject IStudentService StudentService
 @inject IClassService ClassService
 @inject AuthenticationStateProvider AuthStateProvider
@@ -73,13 +75,30 @@
                         }
                     </InputSelect>
                 </label>
-                <div class="status-toggle">
-                    <span class="field-label">Status</span>
-                    <label class="checkbox-field">
-                        <InputCheckbox @bind-Value="model.IsActive" />
-                        Active student
+                <label class="form-field">
+                    <span class="field-label">Student status</span>
+                    <InputSelect @bind-Value="model.Status" class="field-select">
+                        @foreach (var status in Enum.GetValues<StudentStatus>())
+                        {
+                            <option value="@status">@StudentStatusRules.GetDisplayName(status)</option>
+                        }
+                    </InputSelect>
+                    @if (model.Status != StudentStatus.Active)
+                    {
+                        <span class="field-hint">@StudentStatusRules.GetStatusGuidance(model.Status)</span>
+                    }
+                </label>
+                @if (model.Status != StudentStatus.Active)
+                {
+                    <label class="form-field span-2">
+                        <span class="field-label">Reason / remarks</span>
+                        <InputTextArea @bind-Value="model.StatusNote" class="field-input" rows="2" placeholder="@StudentStatusRules.GetStatusNoteExample(model.Status)" />
+                        @if (model.Status is StudentStatus.Suspended or StudentStatus.Expelled)
+                        {
+                            <span class="field-hint">Required for suspended or expelled students.</span>
+                        }
                     </label>
-                </div>
+                }
             </div>
         </fieldset>
 

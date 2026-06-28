@@ -17,6 +17,10 @@ public class SchoolConfiguration : IEntityTypeConfiguration<School>
         builder.Property(x => x.LogoPath).HasMaxLength(300);
         builder.Property(x => x.AbsentNotificationTemplate).HasMaxLength(500);
         builder.Property(x => x.LateNotificationTemplate).HasMaxLength(500);
+        builder.Property(x => x.CheckInNotificationTemplate).HasMaxLength(500);
+        builder.Property(x => x.CheckOutNotificationTemplate).HasMaxLength(500);
+        builder.Property(x => x.LeaveNotificationTemplate).HasMaxLength(500);
+        builder.Property(x => x.PresentNotificationTemplate).HasMaxLength(500);
     }
 }
 
@@ -66,6 +70,7 @@ public class StudentConfiguration : IEntityTypeConfiguration<Student>
         builder.Property(x => x.FirstName).HasMaxLength(100).IsRequired();
         builder.Property(x => x.LastName).HasMaxLength(100).IsRequired();
         builder.Property(x => x.PhotoPath).HasMaxLength(300);
+        builder.Property(x => x.StatusNote).HasMaxLength(500);
         builder.HasIndex(x => new { x.SchoolId, x.StudentCode }).IsUnique();
     }
 }
@@ -253,6 +258,22 @@ public class AttendanceNotificationLogConfiguration : IEntityTypeConfiguration<A
         builder.HasOne(x => x.Student)
             .WithMany()
             .HasForeignKey(x => x.StudentId)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public class StaffDailyAttendanceConfiguration : IEntityTypeConfiguration<StaffDailyAttendance>
+{
+    public void Configure(EntityTypeBuilder<StaffDailyAttendance> builder)
+    {
+        builder.ToTable("StaffDailyAttendances", "attendance");
+        builder.Property(x => x.Remarks).HasMaxLength(250);
+        builder.Property(x => x.UpdatedByUserId).HasMaxLength(450);
+        builder.HasIndex(x => new { x.TeacherId, x.AttendanceDate }).IsUnique();
+        builder.HasIndex(x => new { x.SchoolId, x.AttendanceDate });
+        builder.HasOne(x => x.Teacher)
+            .WithMany()
+            .HasForeignKey(x => x.TeacherId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

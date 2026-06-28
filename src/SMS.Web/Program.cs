@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Identity;
 using System.Security.Claims;
 using SMS.Application.DTOs;
 using SMS.Application.Interfaces;
+using SMS.Domain.Common;
 using SMS.Domain.Enums;
 using SMS.Infrastructure;
 using SMS.Infrastructure.Data;
@@ -25,6 +26,7 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddAuthorization();
 builder.Services.AddScoped<AuthenticationStateProvider, IdentityRevalidatingAuthenticationStateProvider>();
 builder.Services.AddScoped<SchoolBrandingRefresh>();
+builder.Services.AddScoped<IUserPrincipalAccessor, UserPrincipalAccessor>();
 builder.Services.AddSingleton<ToastService>();
 builder.Services.AddSingleton<ConfirmDialogService>();
 
@@ -132,10 +134,11 @@ app.MapPost("/attendance/gate/scan", async (
         return Results.BadRequest(new GateFaceScanResponse(false, "Invalid face scan data."));
     }
 
-    var match = await localBiometricService.MatchFaceAsync(request.Descriptor, cancellationToken);
+    var match = await localBiometricService.MatchFaceAsync(request.Descriptor, request.MatchMode, cancellationToken);
     if (match is null)
     {
-        return Results.Ok(new GateFaceScanResponse(false, "Face not recognized. Enroll this student first (Local Biometric Test)."));
+        return Results.Ok(new GateFaceScanResponse(false,
+            "Face not recognized. Enroll the student at Attendance → Biometric Test, then scan again."));
     }
 
     var result = await localBiometricService.ScanByExternalIdAsync(
@@ -155,6 +158,33 @@ app.MapGet("/attendance/gate/enrollments", async (
     CancellationToken cancellationToken) =>
     Results.Ok(await localBiometricService.GetFaceEnrollmentsAsync(cancellationToken)))
     .RequireAuthorization();
+
+app.MapPost("/attendance/gate/enroll", async (
+    GateFaceEnrollRequest request,
+    ILocalBiometricService localBiometricService,
+    CancellationToken cancellationToken) =>
+{
+    if (request.StudentId <= 0)
+    {
+        return Results.BadRequest(new GateFaceEnrollResponse(false, "Select a student.", 0, false));
+    }
+
+    if (request.Descriptor is null || request.Descriptor.Length < 32)
+    {
+        return Results.BadRequest(new GateFaceEnrollResponse(false, "No face detected. Face the camera in good light.", 0, false));
+    }
+
+    await localBiometricService.EnrollFaceAsync(request.StudentId, request.Descriptor, cancellationToken);
+    var sampleCount = await localBiometricService.GetFaceSampleCountAsync(request.StudentId, cancellationToken);
+    var verify = await localBiometricService.MatchFaceAsync(request.Descriptor, FaceMatchMode.Gate, cancellationToken);
+    var gateReady = verify is not null && sampleCount >= 2;
+
+    var message = gateReady
+        ? $"Saved sample {sampleCount}. Gate ready for this student."
+        : $"Saved sample {sampleCount}. Click Enroll again from a slightly different angle.";
+
+    return Results.Ok(new GateFaceEnrollResponse(true, message, sampleCount, gateReady));
+}).RequireAuthorization(new AuthorizeAttribute { Roles = $"{RoleNames.Admin},{RoleNames.Coordinator}" }).DisableAntiforgery();
 
 app.MapPost("/attendance/gate/record", async (
     GateFaceRecordRequest request,

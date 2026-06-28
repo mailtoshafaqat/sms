@@ -14,18 +14,16 @@
 
 <PageTitle>School Settings</PageTitle>
 
-<div class="page-header">
-    <h1>School Settings</h1>
-</div>
+<PageIntro Title="School Settings" Subtitle="School profile, gate hours, parent WhatsApp alerts, and weekly off days." />
 
 @if (model is null)
 {
-    <p>Loading...</p>
+    <div class="card"><p>Loading...</p></div>
 }
 else
 {
-    <div class="card settings-section">
-        <h3>School Logo</h3>
+    <div class="card settings-block">
+        <h3 class="settings-block-title">School logo</h3>
         <div class="logo-upload-row">
             @if (!string.IsNullOrWhiteSpace(model.LogoPath))
             {
@@ -46,91 +44,198 @@ else
                 {
                     <button type="button" class="btn btn-danger btn-icon" data-tooltip="Remove school logo" @onclick="RemoveLogoAsync">
                         <AppIcon Name="delete" />
-                        <span>Remove Logo</span>
+                        <span>Remove logo</span>
                     </button>
                 }
             </div>
         </div>
-        <p class="hint">PNG, JPG, WEBP, or GIF. Max 2 MB. Logo appears in the sidebar after upload.</p>
+        <p class="hint">PNG, JPG, WEBP, or GIF. Max 2 MB. Shown in the sidebar after upload.</p>
     </div>
 
-    <EditForm FormName="school-settings" Model="model" OnValidSubmit="SaveAsync" class="card form-grid form-grid-2 settings-form">
-        <h3 class="span-2">School Details</h3>
-        <label class="span-2">School Name <InputText @bind-Value="model.Name" autocomplete="organization" /></label>
-        <label class="span-2">Address <InputText @bind-Value="model.Address" autocomplete="street-address" /></label>
-        <label>Phone <InputText @bind-Value="model.Phone" autocomplete="tel" /></label>
-        <label>Email <InputText @bind-Value="model.Email" autocomplete="email" /></label>
-        <label>WhatsApp Number <InputText @bind-Value="model.WhatsAppNumber" autocomplete="tel" /></label>
-        <label>School Start Time <InputText @bind-Value="startTimeText" placeholder="07:30" /></label>
-        <label>Late Grace (minutes) <InputNumber @bind-Value="model.LateAfterMinutes" /></label>
-        <label>School End Time <InputText @bind-Value="endTimeText" placeholder="13:00" /></label>
-        <p class="hint span-2">
-            Example: start 08:00 + grace 60 min → on-time until 09:00, late after 09:00.
-            First scan of the day marks IN; second scan marks OUT.
-        </p>
-
-        <div class="weekly-off-settings span-2">
-            <h3>Parent notifications (WhatsApp)</h3>
-            <p class="hint">Opens pre-filled WhatsApp links from the Notifications page — no API key required.</p>
-            <div class="weekly-off-grid">
-                <label class="weekly-off-option">
-                    <InputCheckbox @bind-Value="model.NotifyAbsent" />
-                    Notify when marked absent
+    <EditForm FormName="school-settings" Model="model" OnValidSubmit="SaveAsync" class="school-settings-form">
+        <div class="card settings-block">
+            <h3 class="settings-block-title">School profile</h3>
+            <div class="form-grid form-grid-2">
+                <label class="span-2 form-field">
+                    <span class="field-label">School name</span>
+                    <InputText @bind-Value="model.Name" class="field-input" autocomplete="organization" />
                 </label>
-                <label class="weekly-off-option">
-                    <InputCheckbox @bind-Value="model.NotifyLate" />
-                    Notify when student is late
+                <label class="span-2 form-field">
+                    <span class="field-label">Address</span>
+                    <InputText @bind-Value="model.Address" class="field-input" autocomplete="street-address" />
                 </label>
-            </div>
-            <p class="hint">
-                Placeholders: <code>{SchoolName}</code>, <code>{StudentName}</code>, <code>{Date}</code>,
-                <code>{Class}</code>, <code>{Section}</code>, <code>{ClassSection}</code>.
-                Leave blank to use the built-in default message.
-            </p>
-            <label class="span-2">
-                Absent message template
-                <InputTextArea @bind-Value="model.AbsentNotificationTemplate" rows="3" class="field-input template-input" placeholder="@NotificationMessageBuilder.DefaultAbsentTemplate" />
-            </label>
-            <div class="actions">
-                <button type="button" class="btn btn-secondary" @onclick="ResetAbsentTemplate">Reset absent to default</button>
-            </div>
-            <label class="span-2">
-                Late message template
-                <InputTextArea @bind-Value="model.LateNotificationTemplate" rows="2" class="field-input template-input" placeholder="@NotificationMessageBuilder.DefaultLateTemplate" />
-            </label>
-            <div class="actions">
-                <button type="button" class="btn btn-secondary" @onclick="ResetLateTemplate">Reset late to default</button>
-            </div>
-            <div class="notification-preview">
-                <p class="hint"><strong>Preview (sample):</strong></p>
-                <p class="notification-preview-text">@GetAbsentPreview()</p>
-                <p class="notification-preview-text">@GetLatePreview()</p>
+                <label class="form-field">
+                    <span class="field-label">Phone</span>
+                    <InputText @bind-Value="model.Phone" class="field-input" autocomplete="tel" />
+                </label>
+                <label class="form-field">
+                    <span class="field-label">Email</span>
+                    <InputText @bind-Value="model.Email" class="field-input" autocomplete="email" />
+                </label>
+                <label class="form-field">
+                    <span class="field-label">School WhatsApp</span>
+                    <InputText @bind-Value="model.WhatsAppNumber" class="field-input" autocomplete="tel" />
+                </label>
             </div>
         </div>
 
-        <div class="weekly-off-settings span-2">
-            <h3>Recurring Weekly Off Days</h3>
-            <p class="hint">Punjab schools usually have Sunday off. Some schools also close on Saturday.</p>
-            <div class="weekly-off-presets">
-                <button type="button" class="btn btn-secondary" @onclick="SetPunjabSundayOnly">Punjab (Sunday only)</button>
-                <button type="button" class="btn btn-secondary" @onclick="SetSaturdaySunday">Saturday + Sunday</button>
-                <button type="button" class="btn btn-secondary" @onclick="SetNoWeeklyOff">No weekly off</button>
+        <div class="card settings-block">
+            <h3 class="settings-block-title">School hours &amp; gate</h3>
+            <p class="hint">Used for late marking and gate IN / OUT scans.</p>
+            <div class="school-hours-grid">
+                <label class="form-field">
+                    <span class="field-label">Start time</span>
+                    <InputText @bind-Value="startTimeText" class="field-input" placeholder="07:30" />
+                </label>
+                <label class="form-field">
+                    <span class="field-label">Late grace (minutes)</span>
+                    <InputNumber @bind-Value="model.LateAfterMinutes" class="field-input" />
+                </label>
+                <label class="form-field">
+                    <span class="field-label">End time</span>
+                    <InputText @bind-Value="endTimeText" class="field-input" placeholder="13:00" />
+                </label>
             </div>
-            <div class="weekly-off-grid">
+            <p class="hint settings-inline-hint">
+                Example: start 08:00 + grace 60 min → on-time until 09:00. First scan marks <strong>IN</strong>; second scan marks <strong>OUT</strong>.
+            </p>
+        </div>
+
+        <div class="card settings-block">
+            <div class="settings-block-header">
+                <div>
+                    <h3 class="settings-block-title">Parent notifications</h3>
+                    <p class="hint">Queued on Attendance → Parent Notifications. Open each WhatsApp link to send — no API key required.</p>
+                </div>
+                <div class="settings-quick-actions">
+                    <button type="button" class="btn btn-secondary btn-sm" @onclick="EnableAllNotifications">Enable all</button>
+                    <button type="button" class="btn btn-secondary btn-sm" @onclick="DisableAllNotifications">Disable all</button>
+                </div>
+            </div>
+
+            <div class="notification-toggle-groups">
+                <div class="notification-toggle-group">
+                    <span class="notification-group-label">Gate scans</span>
+                    <div class="notification-toggle-grid">
+                        <label class="notification-toggle-card">
+                            <InputCheckbox @bind-Value="model.NotifyCheckIn" />
+                            <span class="notification-toggle-text">
+                                <strong>Check-in</strong>
+                                <span>On-time arrival at gate</span>
+                            </span>
+                        </label>
+                        <label class="notification-toggle-card">
+                            <InputCheckbox @bind-Value="model.NotifyCheckOut" />
+                            <span class="notification-toggle-text">
+                                <strong>Check-out</strong>
+                                <span>Leaving at gate</span>
+                            </span>
+                        </label>
+                        <label class="notification-toggle-card">
+                            <InputCheckbox @bind-Value="model.NotifyLate" />
+                            <span class="notification-toggle-text">
+                                <strong>Late</strong>
+                                <span>After grace period</span>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+                <div class="notification-toggle-group">
+                    <span class="notification-group-label">Attendance status</span>
+                    <div class="notification-toggle-grid">
+                        <label class="notification-toggle-card">
+                            <InputCheckbox @bind-Value="model.NotifyAbsent" />
+                            <span class="notification-toggle-text">
+                                <strong>Absent</strong>
+                                <span>Manual or end-of-day</span>
+                            </span>
+                        </label>
+                        <label class="notification-toggle-card">
+                            <InputCheckbox @bind-Value="model.NotifyPresent" />
+                            <span class="notification-toggle-text">
+                                <strong>Present</strong>
+                                <span>Manual mark present</span>
+                            </span>
+                        </label>
+                        <label class="notification-toggle-card">
+                            <InputCheckbox @bind-Value="model.NotifyLeave" />
+                            <span class="notification-toggle-text">
+                                <strong>Leave</strong>
+                                <span>Manual mark leave</span>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <details class="notification-templates-details">
+                <summary>Message templates (optional)</summary>
+                <p class="hint">
+                    Placeholders: <code>{SchoolName}</code>, <code>{StudentName}</code>, <code>{Date}</code>, <code>{Time}</code>,
+                    <code>{Class}</code>, <code>{Section}</code>, <code>{ClassSection}</code>.
+                    Leave blank for built-in defaults.
+                </p>
+                <div class="notification-editor-layout">
+                    <div class="notification-templates">
+                        <label class="form-field">
+                            <span class="field-label">Absent template</span>
+                            <InputTextArea @bind-Value="model.AbsentNotificationTemplate" rows="3" class="field-input template-input" placeholder="@NotificationMessageBuilder.DefaultAbsentTemplate" />
+                        </label>
+                        <button type="button" class="btn btn-secondary btn-sm" @onclick="ResetAbsentTemplate">Reset absent</button>
+
+                        <label class="form-field">
+                            <span class="field-label">Late template</span>
+                            <InputTextArea @bind-Value="model.LateNotificationTemplate" rows="2" class="field-input template-input" placeholder="@NotificationMessageBuilder.DefaultLateTemplate" />
+                        </label>
+                        <button type="button" class="btn btn-secondary btn-sm" @onclick="ResetLateTemplate">Reset late</button>
+                    </div>
+                    <div class="notification-preview">
+                        <p class="notification-preview-heading">Live preview</p>
+                        <div class="notification-preview-item">
+                            <span class="notification-preview-tag">Check in</span>
+                            <p class="notification-preview-text">@GetCheckInPreview()</p>
+                        </div>
+                        <div class="notification-preview-item">
+                            <span class="notification-preview-tag">Check out</span>
+                            <p class="notification-preview-text">@GetCheckOutPreview()</p>
+                        </div>
+                        <div class="notification-preview-item">
+                            <span class="notification-preview-tag">Late</span>
+                            <p class="notification-preview-text">@GetLatePreview()</p>
+                        </div>
+                        <div class="notification-preview-item">
+                            <span class="notification-preview-tag">Absent</span>
+                            <p class="notification-preview-text">@GetAbsentPreview()</p>
+                        </div>
+                    </div>
+                </div>
+            </details>
+        </div>
+
+        <div class="card settings-block">
+            <h3 class="settings-block-title">Weekly off days</h3>
+            <p class="hint">Recurring days with no attendance (e.g. Sunday for Punjab schools).</p>
+            <div class="weekly-off-presets">
+                <button type="button" class="btn btn-secondary @(IsWeeklyOffPreset(WeeklyOffDays.Sunday) ? "is-active" : null)" @onclick="SetPunjabSundayOnly">Punjab (Sunday only)</button>
+                <button type="button" class="btn btn-secondary @(IsWeeklyOffPreset(WeeklyOffDays.Saturday | WeeklyOffDays.Sunday) ? "is-active" : null)" @onclick="SetSaturdaySunday">Saturday + Sunday</button>
+                <button type="button" class="btn btn-secondary @(IsWeeklyOffPreset(WeeklyOffDays.None) ? "is-active" : null)" @onclick="SetNoWeeklyOff">No weekly off</button>
+            </div>
+            <div class="weekly-off-grid weekly-off-grid-compact">
                 @foreach (var day in weekdayOptions)
                 {
-                    <label class="weekly-off-option">
+                    <label class="weekly-off-option weekly-off-chip @(day.IsSelected ? "is-selected" : null)">
                         <InputCheckbox @bind-Value="day.IsSelected" />
-                        @day.Label
+                        @day.ShortLabel
                     </label>
                 }
             </div>
         </div>
 
-        <div class="form-actions span-2">
+        <div class="settings-save-bar card">
+            <p class="hint">Changes apply after you save.</p>
             <button class="btn btn-icon" type="submit" data-tooltip="Save school settings">
                 <AppIcon Name="save" />
-                <span>Save Settings</span>
+                <span>Save settings</span>
             </button>
         </div>
     </EditForm>
@@ -141,13 +246,15 @@ else
     private string startTimeText = "07:30";
     private string endTimeText = "13:00";
     private readonly List<WeekdayOption> weekdayOptions = Enum.GetValues<DayOfWeek>()
-        .Select(day => new WeekdayOption { Day = day, Label = day.ToString() })
+        .Select(day => new WeekdayOption
+        {
+            Day = day,
+            Label = day.ToString(),
+            ShortLabel = day.ToString()[..3]
+        })
         .ToList();
 
-    protected override async Task OnInitializedAsync()
-    {
-        await LoadAsync();
-    }
+    protected override async Task OnInitializedAsync() => await LoadAsync();
 
     private async Task LoadAsync()
     {
@@ -179,11 +286,43 @@ else
         return value;
     }
 
+    private bool IsWeeklyOffPreset(WeeklyOffDays preset) => ReadWeeklyOffFromUi() == preset;
+
     private void SetPunjabSundayOnly() => ApplyWeeklyOffToUi(WeeklyOffDays.Sunday);
 
     private void SetSaturdaySunday() => ApplyWeeklyOffToUi(WeeklyOffDays.Saturday | WeeklyOffDays.Sunday);
 
     private void SetNoWeeklyOff() => ApplyWeeklyOffToUi(WeeklyOffDays.None);
+
+    private void EnableAllNotifications()
+    {
+        if (model is null)
+        {
+            return;
+        }
+
+        model.NotifyCheckIn = true;
+        model.NotifyCheckOut = true;
+        model.NotifyLate = true;
+        model.NotifyAbsent = true;
+        model.NotifyPresent = true;
+        model.NotifyLeave = true;
+    }
+
+    private void DisableAllNotifications()
+    {
+        if (model is null)
+        {
+            return;
+        }
+
+        model.NotifyCheckIn = false;
+        model.NotifyCheckOut = false;
+        model.NotifyLate = false;
+        model.NotifyAbsent = false;
+        model.NotifyPresent = false;
+        model.NotifyLeave = false;
+    }
 
     private void ResetAbsentTemplate()
     {
@@ -223,7 +362,30 @@ else
                 model.LateNotificationTemplate,
                 string.IsNullOrWhiteSpace(model.Name) ? "Demo School" : model.Name,
                 "Ali Raza",
-                DateOnly.FromDateTime(DateTime.Today));
+                DateOnly.FromDateTime(DateTime.Today),
+                new TimeOnly(8, 45));
+
+    private string GetCheckInPreview() =>
+        model is null
+            ? string.Empty
+            : NotificationMessageBuilder.BuildCheckInMessage(
+                model.CheckInNotificationTemplate,
+                string.IsNullOrWhiteSpace(model.Name) ? "Demo School" : model.Name,
+                "Ali Raza",
+                DateOnly.FromDateTime(DateTime.Today),
+                "Class 9",
+                "A",
+                new TimeOnly(7, 55));
+
+    private string GetCheckOutPreview() =>
+        model is null
+            ? string.Empty
+            : NotificationMessageBuilder.BuildCheckOutMessage(
+                model.CheckOutNotificationTemplate,
+                string.IsNullOrWhiteSpace(model.Name) ? "Demo School" : model.Name,
+                "Ali Raza",
+                DateOnly.FromDateTime(DateTime.Today),
+                new TimeOnly(13, 5));
 
     private async Task SaveAsync()
     {
@@ -334,6 +496,7 @@ else
     {
         public DayOfWeek Day { get; init; }
         public string Label { get; init; } = string.Empty;
+        public string ShortLabel { get; init; } = string.Empty;
         public bool IsSelected { get; set; }
     }
 }

@@ -1,3 +1,4 @@
+using SMS.Application.DTOs;
 using SMS.Domain.Entities.Attendance;
 using SMS.Domain.Entities.Shared;
 using SMS.Domain.Enums;
@@ -13,6 +14,7 @@ public interface IStudentRepository
         int skip,
         int take,
         IReadOnlyList<int>? sectionIds = null,
+        StudentListFilter filter = StudentListFilter.ActiveOnly,
         CancellationToken cancellationToken = default);
     Task<StudentEnrollment?> GetEnrollmentAsync(int studentId, int academicYearId, bool tracking = false, CancellationToken cancellationToken = default);
     Task<string?> GetBiometricUserIdAsync(int studentId, CancellationToken cancellationToken = default);

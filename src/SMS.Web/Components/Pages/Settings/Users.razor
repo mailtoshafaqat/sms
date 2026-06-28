@@ -40,6 +40,7 @@
             <option value="Admin">Admin</option>
             <option value="Coordinator">Coordinator</option>
             <option value="Teacher">Teacher</option>
+            <option value="GateKeeper">Gate Keeper</option>
         </InputSelect>
     </label>
     <div class="actions span-2">
@@ -130,7 +131,11 @@
     private async Task LoadUsersAsync()
     {
         users.Clear();
-        foreach (var user in UserManager.Users.OrderBy(x => x.Email))
+        var allUsers = UserManager.Users
+            .OrderBy(x => x.Email)
+            .ToList();
+
+        foreach (var user in allUsers)
         {
             var roles = await UserManager.GetRolesAsync(user);
             users.Add(new UserRow(

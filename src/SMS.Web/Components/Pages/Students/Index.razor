@@ -2,6 +2,8 @@
 @rendermode InteractiveServer
 @using SMS.Application.DTOs
 @using SMS.Application.Interfaces
+@using SMS.Domain.Common
+@using SMS.Domain.Enums
 @inject IStudentService StudentService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject ToastService Toast
@@ -15,6 +17,11 @@
     <h1>Students</h1>
     <div class="toolbar-actions">
         <input placeholder="Search name, code, roll..." value="@search" @oninput="OnSearchInputAsync" />
+        <select @bind="statusFilter" @bind:after="OnStatusFilterChangedAsync">
+            <option value="@StudentListFilter.ActiveOnly">Active only</option>
+            <option value="@StudentListFilter.InactiveOnly">Non-active only</option>
+            <option value="@StudentListFilter.All">All students</option>
+        </select>
         <select @bind="pageSize" @bind:after="OnPageSizeChangedAsync">
             <option value="25">25 / page</option>
             <option value="50">50 / page</option>
@@ -56,6 +63,7 @@ else
                     <th>Name</th>
                     <th>Roll</th>
                     <th>Class</th>
+                    <th>Status</th>
                     <th>Phone</th>
                     <th>Actions</th>
                 </tr>
@@ -63,7 +71,7 @@ else
             <tbody>
                 @foreach (var student in result.Items)
                 {
-                    <tr>
+                    <tr class="@(student.IsActive ? null : "inactive")">
                         <td>
                             @if (!string.IsNullOrWhiteSpace(student.PhotoPath))
                             {
@@ -78,6 +86,15 @@ else
                         <td>@student.FullName</td>
                         <td>@student.RollNumber</td>
                         <td>@student.ClassName-@student.SectionName</td>
+                        <td>
+                            <span class="status-badge @(student.IsActive ? "status-connected" : "status-disconnected")">
+                                @StudentStatusRules.GetDisplayName(student.Status)
+                            </span>
+                            @if (!string.IsNullOrWhiteSpace(student.StatusNote))
+                            {
+                                <div class="hint">@student.StatusNote</div>
+                            }
+                        </td>
                         <td>@student.Phone</td>
                         <td>
                             <div class="table-actions">
@@ -115,6 +132,7 @@ else
     private string search = string.Empty;
     private int page = 1;
     private int pageSize = 25;
+    private StudentListFilter statusFilter = StudentListFilter.ActiveOnly;
     private PagedResultDto<StudentListItemDto>? result;
     private CancellationTokenSource? searchDebounceCts;
 
@@ -130,7 +148,13 @@ else
     {
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
         var userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        result = await StudentService.GetStudentsAsync(search, page, pageSize, userId);
+        result = await StudentService.GetStudentsAsync(search, page, pageSize, userId, statusFilter);
+    }
+
+    private async Task OnStatusFilterChangedAsync()
+    {
+        page = 1;
+        await LoadAsync();
     }
 
     private async Task DeleteAsync(StudentListItemDto student)

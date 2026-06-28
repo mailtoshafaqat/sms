@@ -33,8 +33,16 @@ public class SchoolService(
         school.WeeklyOffDays = dto.WeeklyOffDays;
         school.NotifyAbsent = dto.NotifyAbsent;
         school.NotifyLate = dto.NotifyLate;
+        school.NotifyCheckIn = dto.NotifyCheckIn;
+        school.NotifyCheckOut = dto.NotifyCheckOut;
+        school.NotifyLeave = dto.NotifyLeave;
+        school.NotifyPresent = dto.NotifyPresent;
         school.AbsentNotificationTemplate = NormalizeTemplate(dto.AbsentNotificationTemplate);
         school.LateNotificationTemplate = NormalizeTemplate(dto.LateNotificationTemplate);
+        school.CheckInNotificationTemplate = NormalizeTemplate(dto.CheckInNotificationTemplate);
+        school.CheckOutNotificationTemplate = NormalizeTemplate(dto.CheckOutNotificationTemplate);
+        school.LeaveNotificationTemplate = NormalizeTemplate(dto.LeaveNotificationTemplate);
+        school.PresentNotificationTemplate = NormalizeTemplate(dto.PresentNotificationTemplate);
         school.UpdatedAt = DateTime.UtcNow;
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
@@ -86,8 +94,16 @@ public class SchoolService(
         WeeklyOffDays = school.WeeklyOffDays,
         NotifyAbsent = school.NotifyAbsent,
         NotifyLate = school.NotifyLate,
+        NotifyCheckIn = school.NotifyCheckIn,
+        NotifyCheckOut = school.NotifyCheckOut,
+        NotifyLeave = school.NotifyLeave,
+        NotifyPresent = school.NotifyPresent,
         AbsentNotificationTemplate = school.AbsentNotificationTemplate,
-        LateNotificationTemplate = school.LateNotificationTemplate
+        LateNotificationTemplate = school.LateNotificationTemplate,
+        CheckInNotificationTemplate = school.CheckInNotificationTemplate,
+        CheckOutNotificationTemplate = school.CheckOutNotificationTemplate,
+        LeaveNotificationTemplate = school.LeaveNotificationTemplate,
+        PresentNotificationTemplate = school.PresentNotificationTemplate
     };
 
     private static string? NormalizeTemplate(string? value)

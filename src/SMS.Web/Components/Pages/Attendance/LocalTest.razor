@@ -6,6 +6,7 @@
 @using SMS.Application.DTOs
 @using SMS.Application.Interfaces
 @using SMS.Domain.Enums
+@using SMS.Domain.Common
 @using SMS.Web.Services
 @inject IStudentService StudentService
 @using Microsoft.Extensions.Options
@@ -24,7 +25,7 @@
 <div class="card">
     <h3>How it works</h3>
     <ol>
-        <li><strong>One-time enrollment:</strong> select a student, then enroll face (webcam) and/or fingerprint (Windows Hello).</li>
+        <li><strong>One-time enrollment:</strong> select a student, click <strong>Enroll Face</strong> (captures 5 angles automatically). Repeat once more from a different pose if scans fail at the gate.</li>
         <li><strong>Daily attendance:</strong> student stands in front of the camera or scans finger — no manual IN/OUT needed.</li>
         <li><strong>First scan of the day</strong> marks <strong>IN</strong> (Present or Late based on school start + grace time).</li>
         <li><strong>Second scan</strong> marks <strong>OUT</strong>.</li>
@@ -275,39 +276,41 @@ else
         }
 
         isBusy = true;
-        SetFaceStatus("Capturing face… look at the camera and hold still.");
+        SetFaceStatus("Capturing 3 face angles… hold still and face the camera.");
         StateHasChanged();
 
         try
         {
             await RunJsAsync(async () =>
             {
-                var descriptorJson = await Js.InvokeAsync<string?>("smsLocalBioCaptureJson", "local-face-video");
-                if (string.IsNullOrWhiteSpace(descriptorJson))
+                var descriptorSets = await Js.InvokeAsync<float[][]>("smsLocalBioCaptureEnrollmentBurst", "local-face-video", 5);
+                if (descriptorSets is null || descriptorSets.Length == 0)
                 {
                     NotifyError("No face detected. Face the camera in good light and try again.", "Enrollment Failed");
                     return;
                 }
 
-                var descriptor = JsonSerializer.Deserialize<float[]>(descriptorJson, DescriptorJsonOptions);
-                if (descriptor is null || descriptor.Length < 32)
+                foreach (var descriptor in descriptorSets)
                 {
-                    NotifyError("Face data was invalid. Try again.", "Enrollment Failed");
-                    return;
+                    if (descriptor.Length < 32)
+                    {
+                        continue;
+                    }
+
+                    await LocalBiometricService.EnrollFaceAsync(selectedStudentId, descriptor);
                 }
 
-                await LocalBiometricService.EnrollFaceAsync(selectedStudentId, descriptor);
-
-                var verify = await LocalBiometricService.MatchFaceAsync(descriptor);
+                var sampleCount = await LocalBiometricService.GetFaceSampleCountAsync(selectedStudentId);
+                var verify = await LocalBiometricService.MatchFaceAsync(descriptorSets[0], FaceMatchMode.Local);
                 if (verify is null)
                 {
-                    NotifyError("Face saved but could not be verified. Enroll again (2–3 samples).", "Enrollment Failed");
+                    NotifyError($"Saved {sampleCount} sample(s) but match is still weak. Enroll again from a slightly different angle.", "Enrollment Warning");
                     return;
                 }
 
                 gateEnrollmentCount = await LocalBiometricService.GetFaceEnrollmentCountAsync();
                 var studentName = students.FirstOrDefault(s => s.Id == selectedStudentId)?.FullName ?? "Student";
-                var text = $"{studentName} is enrolled for gate ({gateEnrollmentCount} total). Manual Scan marks attendance — enroll does not.";
+                var text = $"{studentName} enrolled with {sampleCount} sample(s). Use Gate Kiosk to scan attendance.";
                 SetFaceStatus(text);
                 Toast.Success(text, "Face Enrolled");
             });
@@ -349,7 +352,7 @@ else
                     return;
                 }
 
-                var match = await LocalBiometricService.MatchFaceAsync(descriptor);
+                var match = await LocalBiometricService.MatchFaceAsync(descriptor, FaceMatchMode.Local);
                 if (match is null)
                 {
                     NotifyError("Face not recognized. Enroll this student first.", "Not Recognized");

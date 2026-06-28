@@ -132,6 +132,7 @@ public class AttendanceService(
         foreach (var row in rows)
         {
             var record = await attendanceRepository.GetDailyRecordAsync(row.StudentId, date, tracking: true, cancellationToken);
+            var previousStatus = record?.Status;
 
             if (record is null)
             {
@@ -151,6 +152,11 @@ public class AttendanceService(
             record.IsManualEntry = true;
             record.UpdatedByUserId = userId;
             record.UpdatedAt = DateTime.UtcNow;
+
+            if (previousStatus != row.Status)
+            {
+                await notificationService.QueueAttendanceStatusNotificationAsync(row.StudentId, date, row.Status, cancellationToken);
+            }
         }
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
@@ -253,20 +259,27 @@ public class AttendanceService(
         }
 
         var notifyLate = false;
+        var notifyCheckIn = false;
+        var notifyCheckOut = false;
         if (resolvedDirection == ScanDirection.In)
         {
+            var isFirstCheckIn = daily.CheckInTime is null;
             daily.CheckInTime ??= now;
             var wasLate = daily.Status == AttendanceStatus.Late;
             daily.Status = IsLate(school, now) ? AttendanceStatus.Late : AttendanceStatus.Present;
-            notifyLate = !wasLate && daily.Status == AttendanceStatus.Late;
+            notifyLate = isFirstCheckIn && !wasLate && daily.Status == AttendanceStatus.Late;
+            notifyCheckIn = isFirstCheckIn && daily.Status != AttendanceStatus.Late;
         }
         else
         {
+            var isFirstCheckOut = daily.CheckOutTime is null;
             daily.CheckOutTime = now;
             if (daily.Status == AttendanceStatus.Absent)
             {
                 daily.Status = AttendanceStatus.Present;
             }
+
+            notifyCheckOut = isFirstCheckOut;
         }
 
         daily.IsManualEntry = false;
@@ -275,7 +288,16 @@ public class AttendanceService(
         await unitOfWork.SaveChangesAsync(cancellationToken);
         if (notifyLate)
         {
-            await notificationService.QueueLateNotificationAsync(map.StudentId, today, cancellationToken);
+            await notificationService.QueueLateNotificationAsync(map.StudentId, today, now, cancellationToken);
+        }
+        else if (notifyCheckIn)
+        {
+            await notificationService.QueueCheckInNotificationAsync(map.StudentId, today, now, cancellationToken);
+        }
+
+        if (notifyCheckOut)
+        {
+            await notificationService.QueueCheckOutNotificationAsync(map.StudentId, today, now, cancellationToken);
         }
 
         return true;

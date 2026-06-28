@@ -382,6 +382,59 @@ namespace SMS.Infrastructure.Migrations
                     b.ToTable("DailyAttendances", "attendance");
                 });
 
+            modelBuilder.Entity("SMS.Domain.Entities.Attendance.StaffDailyAttendance", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateOnly>("AttendanceDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime?>("CheckInTime")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("CheckOutTime")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsManualEntry")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Remarks")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<int>("SchoolId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TeacherId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SchoolId", "AttendanceDate");
+
+                    b.HasIndex("TeacherId", "AttendanceDate")
+                        .IsUnique();
+
+                    b.ToTable("StaffDailyAttendances", "attendance");
+                });
+
             modelBuilder.Entity("SMS.Domain.Entities.Attendance.SchoolHoliday", b =>
                 {
                     b.Property<int>("Id")
@@ -660,6 +713,22 @@ namespace SMS.Infrastructure.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<string>("CheckInNotificationTemplate")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("CheckOutNotificationTemplate")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("LeaveNotificationTemplate")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("PresentNotificationTemplate")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<string>("Address")
                         .HasColumnType("nvarchar(max)");
 
@@ -692,7 +761,19 @@ namespace SMS.Infrastructure.Migrations
                     b.Property<bool>("NotifyAbsent")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("NotifyCheckIn")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("NotifyCheckOut")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("NotifyLate")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("NotifyLeave")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("NotifyPresent")
                         .HasColumnType("bit");
 
                     b.Property<string>("Phone")
@@ -796,6 +877,13 @@ namespace SMS.Infrastructure.Migrations
 
                     b.Property<int>("SchoolId")
                         .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("StatusNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<string>("StudentCode")
                         .IsRequired()
@@ -1148,6 +1236,17 @@ namespace SMS.Infrastructure.Migrations
                     b.Navigation("Section");
 
                     b.Navigation("Student");
+                });
+
+            modelBuilder.Entity("SMS.Domain.Entities.Attendance.StaffDailyAttendance", b =>
+                {
+                    b.HasOne("SMS.Domain.Entities.Shared.Teacher", "Teacher")
+                        .WithMany()
+                        .HasForeignKey("TeacherId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Teacher");
                 });
 
             modelBuilder.Entity("SMS.Domain.Entities.Attendance.SchoolHoliday", b =>

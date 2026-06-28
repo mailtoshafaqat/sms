@@ -9,7 +9,7 @@
 
 <PageTitle>Parent Notifications</PageTitle>
 
-<PageIntro Title="Parent Notifications" Subtitle="Absent and late alerts queued for WhatsApp. Open each link to send via WhatsApp Web (no API required)." />
+<PageIntro Title="Parent Notifications" Subtitle="Check-in, check-out, absent, late, present, and leave alerts queued for WhatsApp. Open each link to send (no API required)." />
 
 <div class="card toolbar-card">
     <InputDate @bind-Value="selectedDate" class="field-input toolbar-field" />
@@ -22,7 +22,7 @@
 <div class="card">
   @if (notifications.Count == 0)
   {
-      <p class="hint">No notifications for this date. They are created when students are marked absent (end of day) or late (gate scan).</p>
+      <p class="hint">No notifications for this date. They are created when students check in/out at the gate, when attendance is marked manually, or when absent students are finalized at end of day.</p>
   }
   else
   {

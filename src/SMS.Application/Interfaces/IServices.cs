@@ -1,4 +1,5 @@
 using SMS.Application.DTOs;
+using SMS.Domain.Common;
 using SMS.Domain.Enums;
 
 namespace SMS.Application.Interfaces;
@@ -13,7 +14,13 @@ public interface ISchoolService
 
 public interface IStudentService
 {
-    Task<PagedResultDto<StudentListItemDto>> GetStudentsAsync(string? search = null, int page = 1, int pageSize = 25, string? userId = null, CancellationToken cancellationToken = default);
+    Task<PagedResultDto<StudentListItemDto>> GetStudentsAsync(
+        string? search = null,
+        int page = 1,
+        int pageSize = 25,
+        string? userId = null,
+        StudentListFilter filter = StudentListFilter.ActiveOnly,
+        CancellationToken cancellationToken = default);
     Task<StudentFormDto?> GetStudentAsync(int id, CancellationToken cancellationToken = default);
     Task<int> SaveStudentAsync(StudentFormDto dto, CancellationToken cancellationToken = default);
     Task DeleteStudentAsync(int id, CancellationToken cancellationToken = default);
@@ -113,10 +120,20 @@ public interface ITeacherAssignmentService
 public interface IAttendanceNotificationService
 {
     Task QueueAbsentNotificationsAsync(DateOnly date, CancellationToken cancellationToken = default);
-    Task QueueLateNotificationAsync(int studentId, DateOnly date, CancellationToken cancellationToken = default);
+    Task QueueLateNotificationAsync(int studentId, DateOnly date, DateTime? eventTime = null, CancellationToken cancellationToken = default);
+    Task QueueCheckInNotificationAsync(int studentId, DateOnly date, DateTime scanTime, CancellationToken cancellationToken = default);
+    Task QueueCheckOutNotificationAsync(int studentId, DateOnly date, DateTime scanTime, CancellationToken cancellationToken = default);
+    Task QueueAttendanceStatusNotificationAsync(int studentId, DateOnly date, AttendanceStatus status, CancellationToken cancellationToken = default);
+    Task QueueAttendanceNotificationAsync(int studentId, DateOnly date, AttendanceNotificationType type, DateTime? eventTime = null, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<AttendanceNotificationDto>> GetNotificationsAsync(DateOnly date, CancellationToken cancellationToken = default);
     Task MarkSentAsync(int notificationId, CancellationToken cancellationToken = default);
     string BuildWhatsAppUrl(string phone, string message);
+}
+
+public interface IStaffAttendanceService
+{
+    Task<StaffAttendanceSheetResultDto> GetSheetAsync(DateOnly date, CancellationToken cancellationToken = default);
+    Task SaveSheetAsync(DateOnly date, IReadOnlyList<StaffAttendanceRowDto> rows, string? userId, CancellationToken cancellationToken = default);
 }
 
 public interface IBiometricDeviceConnector
@@ -128,12 +145,16 @@ public interface IBiometricDeviceConnector
 public interface ILocalBiometricService
 {
     Task<string> EnrollFaceAsync(int studentId, IReadOnlyList<float> descriptor, CancellationToken cancellationToken = default);
-    Task<LocalBiometricMatchDto?> MatchFaceAsync(IReadOnlyList<float> descriptor, CancellationToken cancellationToken = default);
+    Task<LocalBiometricMatchDto?> MatchFaceAsync(
+        IReadOnlyList<float> descriptor,
+        FaceMatchMode mode = FaceMatchMode.Gate,
+        CancellationToken cancellationToken = default);
     Task<string> EnrollFingerprintAsync(int studentId, string credentialId, CancellationToken cancellationToken = default);
     Task<LocalBiometricMatchDto?> MatchFingerprintAsync(string credentialId, CancellationToken cancellationToken = default);
     Task<LocalBiometricScanResultDto> ScanAsync(int studentId, BiometricType type, ScanDirection? direction = null, CancellationToken cancellationToken = default);
     Task<LocalBiometricScanResultDto> ScanByExternalIdAsync(string externalId, BiometricType type, ScanDirection? direction = null, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<GateFaceEnrollmentDto>> GetFaceEnrollmentsAsync(CancellationToken cancellationToken = default);
     Task<int> GetFaceEnrollmentCountAsync(CancellationToken cancellationToken = default);
+    Task<int> GetFaceSampleCountAsync(int studentId, CancellationToken cancellationToken = default);
 }
 

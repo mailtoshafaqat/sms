@@ -22,7 +22,7 @@ public static class DatabaseSeeder
         await context.Database.MigrateAsync();
         await FixBiometricTypeDefaultsAsync(context);
 
-        foreach (var role in new[] { "Admin", "Coordinator", "Teacher" })
+        foreach (var role in new[] { RoleNames.Admin, RoleNames.Coordinator, RoleNames.Teacher, RoleNames.GateKeeper })
         {
             if (!await roleManager.RoleExistsAsync(role))
             {
@@ -88,7 +88,7 @@ public static class DatabaseSeeder
             };
 
             await userManager.CreateAsync(admin, "Admin@123");
-            await userManager.AddToRoleAsync(admin, "Admin");
+            await userManager.AddToRoleAsync(admin, RoleNames.Admin);
         }
 
         if (await userManager.FindByEmailAsync("coordinator@school.local") is null)
@@ -103,7 +103,7 @@ public static class DatabaseSeeder
             };
 
             await userManager.CreateAsync(coordinator, "Coordinator@123");
-            await userManager.AddToRoleAsync(coordinator, "Coordinator");
+            await userManager.AddToRoleAsync(coordinator, RoleNames.Coordinator);
         }
     }
 

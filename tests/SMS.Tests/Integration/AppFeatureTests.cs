@@ -251,7 +251,7 @@ public class AppFeatureTests : IClassFixture<WebApplicationFactory<Program>>
             LastName = "DeleteTest",
             SectionId = sectionId,
             RollNumber = $"CD{suffix}",
-            IsActive = true
+            Status = StudentStatus.Active
         });
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(
@@ -280,7 +280,7 @@ public class AppFeatureTests : IClassFixture<WebApplicationFactory<Program>>
             LastName = "Student",
             SectionId = sectionId,
             RollNumber = $"DA{suffix}",
-            IsActive = true
+            Status = StudentStatus.Active
         });
 
         await classService.SetSectionActiveAsync(sectionId, false);
@@ -316,7 +316,7 @@ public class AppFeatureTests : IClassFixture<WebApplicationFactory<Program>>
             SectionId = sectionId,
             RollNumber = $"T{suffix}",
             FingerprintUserId = $"fp{suffix}",
-            IsActive = true
+            Status = StudentStatus.Active
         });
         Assert.True(studentId > 0);
         _output.WriteLine($"Student create: PASS — id {studentId}");
@@ -370,7 +370,7 @@ public class AppFeatureTests : IClassFixture<WebApplicationFactory<Program>>
             LastName = "Test",
             SectionId = fromSectionId,
             RollNumber = $"P{suffix}",
-            IsActive = true
+            Status = StudentStatus.Active
         });
 
         try
@@ -419,7 +419,7 @@ public class AppFeatureTests : IClassFixture<WebApplicationFactory<Program>>
             SectionId = sectionId,
             RollNumber = $"A{suffix}",
             FingerprintUserId = $"fp{suffix}",
-            IsActive = true
+            Status = StudentStatus.Active
         });
 
         try
@@ -467,7 +467,7 @@ public class AppFeatureTests : IClassFixture<WebApplicationFactory<Program>>
             SectionId = sectionId,
             RollNumber = $"B{suffix}",
             FingerprintUserId = bioUserId,
-            IsActive = true
+            Status = StudentStatus.Active
         });
 
         try
@@ -502,7 +502,7 @@ public class AppFeatureTests : IClassFixture<WebApplicationFactory<Program>>
             LastName = "Test",
             SectionId = sectionId,
             RollNumber = $"IO{suffix}",
-            IsActive = true
+            Status = StudentStatus.Active
         });
 
         try
@@ -545,7 +545,7 @@ public class AppFeatureTests : IClassFixture<WebApplicationFactory<Program>>
             LastName = "Gate",
             SectionId = sectionId,
             RollNumber = $"EG{suffix}",
-            IsActive = true
+            Status = StudentStatus.Active
         });
 
         try
@@ -591,7 +591,7 @@ public class AppFeatureTests : IClassFixture<WebApplicationFactory<Program>>
             LastName = "Api",
             SectionId = sectionId,
             RollNumber = $"G{suffix}",
-            IsActive = true
+            Status = StudentStatus.Active
         });
 
         try
@@ -639,17 +639,38 @@ public class AppFeatureTests : IClassFixture<WebApplicationFactory<Program>>
         const string demoCode = "PATTERN-DEMO";
         var today = DateOnly.FromDateTime(DateTime.Today);
 
-        var existing = await studentService.GetStudentsAsync(search: demoCode, pageSize: 5);
-        var studentId = existing.Items.FirstOrDefault(x => x.StudentCode == demoCode)?.Id
-            ?? await studentService.SaveStudentAsync(new StudentFormDto
+        var existing = await studentService.GetStudentsAsync(search: demoCode, pageSize: 5, filter: StudentListFilter.All);
+        var existingRow = existing.Items.FirstOrDefault(x => x.StudentCode == demoCode);
+        int studentId;
+        if (existingRow is null)
+        {
+            studentId = await studentService.SaveStudentAsync(new StudentFormDto
             {
                 StudentCode = demoCode,
                 FirstName = "Pattern",
                 LastName = "Demo",
                 SectionId = sectionId,
                 RollNumber = "PAT-1",
-                IsActive = true
+                Status = StudentStatus.Active
             });
+        }
+        else
+        {
+            studentId = existingRow.Id;
+            if (!existingRow.IsActive || existingRow.Status != StudentStatus.Active)
+            {
+                studentId = await studentService.SaveStudentAsync(new StudentFormDto
+                {
+                    Id = existingRow.Id,
+                    StudentCode = demoCode,
+                    FirstName = "Pattern",
+                    LastName = "Demo",
+                    SectionId = sectionId,
+                    RollNumber = "PAT-1",
+                    Status = StudentStatus.Active
+                });
+            }
+        }
 
         var lateDaysMarked = 0;
         for (var offset = 0; offset < 30 && lateDaysMarked < 5; offset++)
@@ -736,7 +757,7 @@ public class AppFeatureTests : IClassFixture<WebApplicationFactory<Program>>
             SectionId = sectionId,
             RollNumber = $"F{suffix}",
             FaceUserId = $"face-{suffix}",
-            IsActive = true
+            Status = StudentStatus.Active
         });
 
         try

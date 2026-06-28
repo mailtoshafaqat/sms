@@ -1,6 +1,7 @@
 using SMS.Domain.Common;
 using SMS.Domain.Entities.Attendance;
 using SMS.Domain.Enums;
+
 namespace SMS.Domain.Entities.Shared;
 
 public class School : BaseEntity
@@ -17,8 +18,16 @@ public class School : BaseEntity
     public WeeklyOffDays WeeklyOffDays { get; set; } = WeeklyOffDays.Sunday;
     public bool NotifyAbsent { get; set; } = true;
     public bool NotifyLate { get; set; } = true;
+    public bool NotifyCheckIn { get; set; } = true;
+    public bool NotifyCheckOut { get; set; } = true;
+    public bool NotifyLeave { get; set; } = true;
+    public bool NotifyPresent { get; set; } = true;
     public string? AbsentNotificationTemplate { get; set; }
     public string? LateNotificationTemplate { get; set; }
+    public string? CheckInNotificationTemplate { get; set; }
+    public string? CheckOutNotificationTemplate { get; set; }
+    public string? LeaveNotificationTemplate { get; set; }
+    public string? PresentNotificationTemplate { get; set; }
     public bool IsActive { get; set; } = true;
 
     public ICollection<AcademicYear> AcademicYears { get; set; } = [];
@@ -74,6 +83,8 @@ public class Student : BaseEntity
     public string? Phone { get; set; }
     public string? WhatsAppNumber { get; set; }
     public string? PhotoPath { get; set; }
+    public StudentStatus Status { get; set; } = StudentStatus.Active;
+    public string? StatusNote { get; set; }
     public bool IsActive { get; set; } = true;
 
     public string FullName => $"{FirstName} {LastName}".Trim();

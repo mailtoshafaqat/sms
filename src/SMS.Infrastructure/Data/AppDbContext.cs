@@ -27,6 +27,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<StudentLocalTemplate> StudentLocalTemplates => Set<StudentLocalTemplate>();
     public DbSet<SchoolHoliday> SchoolHolidays => Set<SchoolHoliday>();
     public DbSet<AttendanceNotificationLog> AttendanceNotificationLogs => Set<AttendanceNotificationLog>();
+    public DbSet<StaffDailyAttendance> StaffDailyAttendances => Set<StaffDailyAttendance>();
     public DbSet<AppExceptionLog> AppExceptionLogs => Set<AppExceptionLog>();
 
     protected override void OnModelCreating(ModelBuilder builder)

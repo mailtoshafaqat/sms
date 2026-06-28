@@ -24,19 +24,11 @@ public class ClassService(
     {
         var academicYear = await academicYearRepository.GetCurrentAsync(cancellationToken: cancellationToken);
 
-        var classesTask = classRepository.GetClassesAsync(cancellationToken);
-        var sectionsTask = classRepository.GetSectionsWithDetailsAsync(cancellationToken);
-        var classCountsTask = classRepository.GetActiveEnrollmentCountsByClassAsync(academicYear.Id, cancellationToken);
-        var sectionCountsTask = classRepository.GetActiveEnrollmentCountsBySectionAsync(academicYear.Id, cancellationToken);
-        var sectionOrderTask = classRepository.GetSectionIdsByClassOrderedAsync(cancellationToken);
-
-        await Task.WhenAll(classesTask, sectionsTask, classCountsTask, sectionCountsTask, sectionOrderTask);
-
-        var classes = await classesTask;
-        var sections = await sectionsTask;
-        var classCounts = await classCountsTask;
-        var sectionCounts = await sectionCountsTask;
-        var sectionOrderByClass = await sectionOrderTask;
+        var classes = await classRepository.GetClassesAsync(cancellationToken);
+        var sections = await classRepository.GetSectionsWithDetailsAsync(cancellationToken);
+        var classCounts = await classRepository.GetActiveEnrollmentCountsByClassAsync(academicYear.Id, cancellationToken);
+        var sectionCounts = await classRepository.GetActiveEnrollmentCountsBySectionAsync(academicYear.Id, cancellationToken);
+        var sectionOrderByClass = await classRepository.GetSectionIdsByClassOrderedAsync(cancellationToken);
 
         return new ClassTreeDto(
             MapClasses(classes, classes, classCounts),
@@ -279,15 +271,11 @@ public class ClassService(
 
     private async Task<EnrollmentMetadata> LoadEnrollmentMetadataAsync(int academicYearId, CancellationToken cancellationToken)
     {
-        var classCountsTask = classRepository.GetActiveEnrollmentCountsByClassAsync(academicYearId, cancellationToken);
-        var sectionCountsTask = classRepository.GetActiveEnrollmentCountsBySectionAsync(academicYearId, cancellationToken);
-        var sectionOrderTask = classRepository.GetSectionIdsByClassOrderedAsync(cancellationToken);
-        await Task.WhenAll(classCountsTask, sectionCountsTask, sectionOrderTask);
+        var classCounts = await classRepository.GetActiveEnrollmentCountsByClassAsync(academicYearId, cancellationToken);
+        var sectionCounts = await classRepository.GetActiveEnrollmentCountsBySectionAsync(academicYearId, cancellationToken);
+        var sectionOrder = await classRepository.GetSectionIdsByClassOrderedAsync(cancellationToken);
 
-        return new EnrollmentMetadata(
-            await classCountsTask,
-            await sectionCountsTask,
-            await sectionOrderTask);
+        return new EnrollmentMetadata(classCounts, sectionCounts, sectionOrder);
     }
 
     private static IReadOnlyList<ClassRoomDto> MapClasses(

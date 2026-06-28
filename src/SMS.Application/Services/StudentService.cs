@@ -1,6 +1,7 @@
 using SMS.Application.DTOs;
 using SMS.Application.Interfaces;
 using SMS.Application.Interfaces.Repositories;
+using SMS.Domain.Common;
 using SMS.Domain.Entities.Attendance;
 using SMS.Domain.Entities.Shared;
 using SMS.Domain.Enums;
@@ -21,10 +22,11 @@ public class StudentService(
         int page = 1,
         int pageSize = 25,
         string? userId = null,
+        StudentListFilter filter = StudentListFilter.ActiveOnly,
         CancellationToken cancellationToken = default)
     {
         page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, 100);
+        pageSize = Math.Clamp(pageSize, 1, 500);
         var skip = (page - 1) * pageSize;
 
         var currentYear = await academicYearRepository.GetCurrentAsync(cancellationToken: cancellationToken);
@@ -39,7 +41,7 @@ public class StudentService(
         }
 
         var (enrollments, totalCount) = await studentRepository.GetActiveEnrollmentsPagedAsync(
-            currentYear.Id, search, skip, pageSize, sectionFilter, cancellationToken);
+            currentYear.Id, search, skip, pageSize, sectionFilter, filter, cancellationToken);
 
         var items = enrollments
             .Select(x => new StudentListItemDto(
@@ -50,8 +52,10 @@ public class StudentService(
                 x.Section.ClassRoom.Name,
                 x.Section.Name,
                 x.Student.Phone,
-                x.Student.IsActive,
-                x.Student.PhotoPath))
+                StudentStatusRules.IsAttendanceEligible(x.Student.Status) && x.IsActive,
+                x.Student.PhotoPath,
+                x.Student.Status,
+                x.Student.StatusNote))
             .ToList();
 
         return new PagedResultDto<StudentListItemDto>(items, totalCount, page, pageSize);
@@ -83,7 +87,8 @@ public class StudentService(
             RollNumber = enrollment.RollNumber,
             FingerprintUserId = fingerprintUserId,
             FaceUserId = faceUserId,
-            IsActive = enrollment.Student.IsActive,
+            Status = enrollment.Student.Status,
+            StatusNote = enrollment.Student.StatusNote,
             PhotoPath = enrollment.Student.PhotoPath
         };
     }
@@ -127,11 +132,11 @@ public class StudentService(
         student.FatherName = dto.FatherName?.Trim();
         student.Phone = dto.Phone?.Trim();
         student.WhatsAppNumber = dto.WhatsAppNumber?.Trim();
-        student.IsActive = dto.IsActive;
+        ApplyStudentStatus(student, dto.Status, dto.StatusNote);
 
         enrollment.SectionId = dto.SectionId;
         enrollment.RollNumber = dto.RollNumber.Trim();
-        enrollment.IsActive = dto.IsActive;
+        enrollment.IsActive = student.IsActive;
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -153,6 +158,8 @@ public class StudentService(
         var student = await studentRepository.GetStudentByIdAsync(id, tracking: true, cancellationToken)
             ?? throw new InvalidOperationException("Student not found.");
 
+        student.Status = StudentStatus.Left;
+        student.StatusNote = "Removed from active student list.";
         student.IsActive = false;
         student.UpdatedAt = DateTime.UtcNow;
 
@@ -241,8 +248,20 @@ public class StudentService(
         map.UpdatedAt = DateTime.UtcNow;
     }
 
+    private static void ApplyStudentStatus(Student student, StudentStatus status, string? statusNote)
+    {
+        student.Status = status;
+        student.StatusNote = string.IsNullOrWhiteSpace(statusNote) ? null : statusNote.Trim();
+        student.IsActive = StudentStatusRules.IsAttendanceEligible(status);
+    }
+
     private async Task ValidateStudentAsync(StudentFormDto dto, int schoolId, int academicYearId, CancellationToken cancellationToken)
     {
+        if (StudentStatusRules.RequiresStatusNote(dto.Status) && string.IsNullOrWhiteSpace(dto.StatusNote))
+        {
+            throw new InvalidOperationException($"A reason is required when status is {StudentStatusRules.GetDisplayName(dto.Status)}.");
+        }
+
         if (string.IsNullOrWhiteSpace(dto.RollNumber))
         {
             throw new InvalidOperationException("Roll number is required.");

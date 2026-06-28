@@ -30,8 +30,8 @@ public class LocalBiometricService(
             ? new List<float[]>()
             : DeserializeDescriptorSet(existing.TemplateData).ToList();
 
-        descriptors.Add(descriptor.ToArray());
-        if (descriptors.Count > 3)
+        descriptors.Add(NormalizeDescriptor(descriptor));
+        if (descriptors.Count > 8)
         {
             descriptors.RemoveAt(0);
         }
@@ -42,38 +42,35 @@ public class LocalBiometricService(
         return externalId;
     }
 
-    public async Task<LocalBiometricMatchDto?> MatchFaceAsync(IReadOnlyList<float> descriptor, CancellationToken cancellationToken = default)
+    public async Task<LocalBiometricMatchDto?> MatchFaceAsync(
+        IReadOnlyList<float> descriptor,
+        FaceMatchMode mode = FaceMatchMode.Gate,
+        CancellationToken cancellationToken = default)
     {
         ValidateDescriptor(descriptor);
 
         var templates = await localBiometricRepository.GetFaceTemplatesAsync(cancellationToken);
-        StudentLocalTemplate? bestTemplate = null;
-        var bestDistance = float.MaxValue;
+        var activeStudentIds = await GetActiveFaceStudentIdsAsync(templates, cancellationToken);
+        var eligibleTemplates = templates.Where(x => activeStudentIds.Contains(x.StudentId)).ToList();
+        var candidates = eligibleTemplates
+            .Select(template => (
+                template.StudentId,
+                DescriptorSets: (IReadOnlyList<float[]>)DeserializeDescriptorSet(template.TemplateData)))
+            .Where(x => x.DescriptorSets.Count > 0);
 
-        foreach (var template in templates)
-        {
-            foreach (var stored in DeserializeDescriptorSet(template.TemplateData))
-            {
-                var distance = FaceMatcher.Distance(descriptor, stored);
-                if (distance < bestDistance)
-                {
-                    bestDistance = distance;
-                    bestTemplate = template;
-                }
-            }
-        }
-
-        if (bestTemplate is null || bestDistance > FaceMatcher.GateMatchThreshold)
+        var (match, _) = FaceMatcher.TryFindBestMatch(descriptor, candidates, mode);
+        if (match is null)
         {
             return null;
         }
 
+        var bestTemplate = eligibleTemplates.First(x => x.StudentId == match.Value.Id);
         var student = await studentRepository.GetStudentByIdAsync(bestTemplate.StudentId, cancellationToken: cancellationToken);
         return new LocalBiometricMatchDto(
             bestTemplate.StudentId,
             student?.FullName ?? "Unknown",
             bestTemplate.ExternalId,
-            bestDistance);
+            match.Value.Distance);
     }
 
     public async Task<string> EnrollFingerprintAsync(int studentId, string credentialId, CancellationToken cancellationToken = default)
@@ -177,7 +174,8 @@ public class LocalBiometricService(
         var templates = await localBiometricRepository.GetFaceTemplatesAsync(cancellationToken);
         var enrollments = new List<GateFaceEnrollmentDto>(templates.Count);
 
-        foreach (var template in templates)
+        var activeStudentIds = await GetActiveFaceStudentIdsAsync(templates, cancellationToken);
+        foreach (var template in templates.Where(x => activeStudentIds.Contains(x.StudentId)))
         {
             var descriptors = DeserializeDescriptorSet(template.TemplateData)
                 .Where(x => x.Length >= 32)
@@ -199,6 +197,12 @@ public class LocalBiometricService(
 
     public async Task<int> GetFaceEnrollmentCountAsync(CancellationToken cancellationToken = default) =>
         (await GetFaceEnrollmentsAsync(cancellationToken)).Count;
+
+    public async Task<int> GetFaceSampleCountAsync(int studentId, CancellationToken cancellationToken = default)
+    {
+        var template = await localBiometricRepository.GetTemplateAsync(studentId, BiometricType.Face, cancellationToken: cancellationToken);
+        return template is null ? 0 : DeserializeDescriptorSet(template.TemplateData).Count;
+    }
 
     private async Task SaveTemplateAsync(
         int studentId,
@@ -270,6 +274,23 @@ public class LocalBiometricService(
         await unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
+    private async Task<HashSet<int>> GetActiveFaceStudentIdsAsync(
+        IReadOnlyList<StudentLocalTemplate> templates,
+        CancellationToken cancellationToken)
+    {
+        var ids = new HashSet<int>();
+        foreach (var template in templates)
+        {
+            var student = await studentRepository.GetStudentByIdAsync(template.StudentId, cancellationToken: cancellationToken);
+            if (student is { IsActive: true, Status: StudentStatus.Active })
+            {
+                ids.Add(template.StudentId);
+            }
+        }
+
+        return ids;
+    }
+
     private static string BuildExternalId(BiometricType type, int studentId) =>
         type switch
         {
@@ -277,6 +298,9 @@ public class LocalBiometricService(
             BiometricType.Fingerprint => $"FP-{studentId}",
             _ => $"LOCAL-{studentId}"
         };
+
+    private static float[] NormalizeDescriptor(IReadOnlyList<float> descriptor) =>
+        FaceMatcher.Normalize(descriptor);
 
     private static void ValidateDescriptor(IReadOnlyList<float> descriptor)
     {

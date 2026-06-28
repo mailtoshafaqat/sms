@@ -1,12 +1,27 @@
-const CACHE_NAME = 'sms-gate-v13';
+const CACHE_NAME = 'sms-gate-v17';
+
+const FACE_MODEL_ASSETS = [
+    '/js/face-api.min.js',
+    '/models/face-api/tiny_face_detector_model-weights_manifest.json',
+    '/models/face-api/tiny_face_detector_model.bin',
+    '/models/face-api/face_landmark_68_model-weights_manifest.json',
+    '/models/face-api/face_landmark_68_model.bin',
+    '/models/face-api/face_recognition_model-weights_manifest.json',
+    '/models/face-api/face_recognition_model.bin',
+    '/models/face-api/ssd_mobilenetv1_model-weights_manifest.json',
+    '/models/face-api/ssd_mobilenetv1_model.bin'
+];
+
 const PRECACHE_URLS = [
     '/app.css',
     '/js/pwa-register.js',
     '/js/gate-kiosk.js',
+    '/js/local-biometric.js',
     '/branding/company-logo.svg',
     '/branding/gate-icon-192.png',
     '/branding/gate-icon-512.png',
-    '/manifest.webmanifest'
+    '/manifest.webmanifest',
+    ...FACE_MODEL_ASSETS
 ];
 
 self.addEventListener('install', (event) => {
@@ -71,6 +86,27 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
+    if (url.pathname.startsWith('/models/face-api/')) {
+        event.respondWith(
+            caches.match(request).then((cached) => {
+                if (cached) {
+                    return cached;
+                }
+
+                return fetch(request).then((response) => {
+                    if (!response || response.status !== 200) {
+                        return response;
+                    }
+
+                    const copy = response.clone();
+                    caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+                    return response;
+                });
+            })
+        );
+        return;
+    }
+
     if (isJsRequest(url)) {
         event.respondWith(networkFirst(request));
         return;
@@ -80,8 +116,7 @@ self.addEventListener('fetch', (event) => {
         url.pathname.endsWith('.css') ||
         url.pathname.endsWith('.svg') ||
         url.pathname.endsWith('.png') ||
-        url.pathname.endsWith('.webmanifest') ||
-        url.hostname === 'cdn.jsdelivr.net';
+        url.pathname.endsWith('.webmanifest');
 
     if (!isStaticAsset) {
         return;

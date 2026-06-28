@@ -4,10 +4,8 @@
 @using Microsoft.AspNetCore.Components.Web
 @using Microsoft.JSInterop
 @using SMS.Application.Interfaces
-@using SMS.Web.Services
 @inject ILocalBiometricService LocalBiometricService
 @inject IJSRuntime Js
-@inject ToastService Toast
 @implements IAsyncDisposable
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 
@@ -19,8 +17,7 @@
         <p>Stand in front of the camera — attendance is captured automatically</p>
         @if (enrolledCount > 0)
         {
-            <p class="gate-kiosk-enrolled">@enrolledCount face(s) enrolled for gate</p>
-            <p class="gate-kiosk-enrolled-hint">For best results on this phone, enroll the face on this same device (Local Biometric Test).</p>
+            <p class="gate-kiosk-enrolled">@enrolledCount active student face(s) enrolled</p>
         }
     </header>
 
@@ -35,11 +32,16 @@
     else if (enrolledCount == 0)
     {
         <div class="gate-kiosk-secure-alert" role="alert">
-            <p><strong>No faces enrolled.</strong> Admin must enroll students at <strong>Attendance → Local Biometric Test</strong> first.</p>
+            <p><strong>No faces enrolled.</strong> Admin must enroll students at <strong>Attendance → Biometric Test</strong> first.</p>
         </div>
     }
 
     <div id="gate-error-only" class="gate-kiosk-error-only" hidden role="alert"></div>
+
+    @if (!string.IsNullOrWhiteSpace(message))
+    {
+        <p class="gate-kiosk-message @(isError ? "gate-status-error" : lastSuccess ? "gate-status-ok" : "muted")">@message</p>
+    }
 
     <div class="gate-kiosk-video-wrap idle" id="gate-video-wrap">
         <video id="gate-face-video" autoplay playsinline muted class="gate-kiosk-video"></video>
@@ -84,8 +86,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var enrollments = await LocalBiometricService.GetFaceEnrollmentsAsync();
-        enrolledCount = enrollments.Count;
+        enrolledCount = await LocalBiometricService.GetFaceEnrollmentCountAsync();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -139,7 +140,7 @@
             await Js.InvokeVoidAsync("smsGateStart", dotNetRef, "gate-face-video", facingMode, 2000);
             cameraRunning = true;
             SetMessage(enrolledCount == 0
-                ? "Camera on — enroll students first, then refresh this page."
+                ? "Camera on — ask admin to enroll students first, then refresh this page."
                 : "Gate active — first scan marks IN, second marks OUT.", enrolledCount == 0);
         }
         catch (JSException ex)

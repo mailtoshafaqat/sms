@@ -40,11 +40,28 @@ public class NotificationMessageBuilderTests
     public void BuildLateMessage_AppliesCustomTemplate()
     {
         var message = NotificationMessageBuilder.BuildLateMessage(
-            "{SchoolName}: {StudentName} is late ({Date}).",
+            "{SchoolName}: {StudentName} is late ({Date}) at {Time}.",
             "Demo School",
             "Ali",
-            new DateOnly(2026, 6, 21));
+            new DateOnly(2026, 6, 21),
+            new TimeOnly(8, 45));
 
-        Assert.Equal("Demo School: Ali is late (21 Jun 2026).", message);
+        Assert.Equal("Demo School: Ali is late (21 Jun 2026) at 08:45.", message);
+    }
+
+    [Fact]
+    public void BuildCheckInMessage_UsesDefaultTemplate()
+    {
+        var message = NotificationMessageBuilder.BuildCheckInMessage(
+            null,
+            "Demo School",
+            "Ali",
+            new DateOnly(2026, 6, 21),
+            "Class 9",
+            "A",
+            new TimeOnly(7, 55));
+
+        Assert.Contains("checked IN", message);
+        Assert.Contains("07:55", message);
     }
 }

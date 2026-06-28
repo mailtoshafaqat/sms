@@ -102,3 +102,18 @@ public class SchoolHoliday : BaseEntity
     public School School { get; set; } = null!;
 }
 
+public class StaffDailyAttendance : BaseEntity
+{
+    public int SchoolId { get; set; }
+    public int TeacherId { get; set; }
+    public DateOnly AttendanceDate { get; set; }
+    public AttendanceStatus Status { get; set; }
+    public DateTime? CheckInTime { get; set; }
+    public DateTime? CheckOutTime { get; set; }
+    public string? Remarks { get; set; }
+    public bool IsManualEntry { get; set; } = true;
+    public string? UpdatedByUserId { get; set; }
+
+    public Teacher Teacher { get; set; } = null!;
+}
+

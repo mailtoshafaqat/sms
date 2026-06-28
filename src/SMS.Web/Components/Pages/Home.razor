@@ -5,6 +5,7 @@
 @using SMS.Domain.Enums
 @inject IDashboardService DashboardService
 @inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 
 <PageTitle>Dashboard</PageTitle>
@@ -155,7 +156,17 @@ else
     protected override async Task OnInitializedAsync()
     {
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
-        var userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var user = auth.User;
+        if (user.IsInRole(RoleNames.GateKeeper)
+            && !user.IsInRole(RoleNames.Admin)
+            && !user.IsInRole(RoleNames.Coordinator)
+            && !user.IsInRole(RoleNames.Teacher))
+        {
+            Navigation.NavigateTo("/attendance/gate", replace: true);
+            return;
+        }
+
+        var userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         stats = await DashboardService.GetDashboardAsync(userId);
     }
 

@@ -20,6 +20,7 @@ public static class DependencyInjection
         services.AddScoped<IAcademicYearService, AcademicYearService>();
         services.AddScoped<ITeacherAssignmentService, TeacherAssignmentService>();
         services.AddScoped<IAttendanceNotificationService, AttendanceNotificationService>();
+        services.AddScoped<IStaffAttendanceService, StaffAttendanceService>();
 
         return services;
     }
