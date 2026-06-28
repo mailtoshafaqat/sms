@@ -37,5 +37,18 @@ public class StaffAttendanceRepository(
             },
             cancellationToken);
 
+    public Task<IReadOnlyList<StaffDailyAttendance>> GetByDateRangeAsync(
+        int schoolId,
+        DateOnly startDate,
+        DateOnly endDate,
+        CancellationToken cancellationToken = default) =>
+        DbContextAccess.ReadAsync(
+            factory,
+            async db => (IReadOnlyList<StaffDailyAttendance>)await db.StaffDailyAttendances.AsNoTracking()
+                .Include(x => x.Teacher)
+                .Where(x => x.SchoolId == schoolId && x.AttendanceDate >= startDate && x.AttendanceDate <= endDate)
+                .ToListAsync(cancellationToken),
+            cancellationToken);
+
     public void Add(StaffDailyAttendance record) => scopedDb.Context.StaffDailyAttendances.Add(record);
 }

@@ -55,6 +55,7 @@ public static class DependencyInjection
         services.AddScoped<IExceptionLogRepository, ExceptionLogRepository>();
         services.AddScoped<IExceptionLogService, ExceptionLogService>();
         services.AddScoped<IMonthlyRegisterExportService, MonthlyRegisterExportService>();
+        services.AddScoped<IStaffMonthlyRegisterExportService, StaffMonthlyRegisterExportService>();
         services.AddScoped<IUserAccessService, UserAccessService>();
         services.Configure<DatabaseBackupOptions>(configuration.GetSection(DatabaseBackupOptions.SectionName));
         services.AddScoped<IDatabaseBackupService, DatabaseBackupService>();

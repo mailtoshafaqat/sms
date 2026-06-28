@@ -133,6 +133,8 @@ public class TeacherConfiguration : IEntityTypeConfiguration<Teacher>
         builder.Property(x => x.EmployeeCode).HasMaxLength(50).IsRequired();
         builder.Property(x => x.FirstName).HasMaxLength(100).IsRequired();
         builder.Property(x => x.LastName).HasMaxLength(100).IsRequired();
+        builder.Property(x => x.FingerprintUserId).HasMaxLength(50);
+        builder.Property(x => x.FaceUserId).HasMaxLength(50);
     }
 }
 

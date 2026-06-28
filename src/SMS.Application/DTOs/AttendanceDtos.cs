@@ -249,6 +249,20 @@ public record TeacherStaffDto(
     bool IsActive,
     IReadOnlyList<string> AssignedSections);
 
+public record StaffMemberFormDto
+{
+    public int Id { get; set; }
+    public string FirstName { get; set; } = string.Empty;
+    public string LastName { get; set; } = string.Empty;
+    public string EmployeeCode { get; set; } = string.Empty;
+    public string? Phone { get; set; }
+    public string? FingerprintUserId { get; set; }
+    public string? FaceUserId { get; set; }
+    public bool IsActive { get; set; } = true;
+    public string? LinkedUserId { get; set; }
+    public string? LinkedUserEmail { get; set; }
+}
+
 public record SectionTeacherAssignmentDto(
     int SectionId,
     string SectionName,
@@ -290,6 +304,35 @@ public record StaffAttendanceRowDto
     public AttendanceStatus Status { get; set; }
     public string? Remarks { get; set; }
 }
+
+public record StaffMonthlyRegisterRowDto(
+    string EmployeeCode,
+    string StaffName,
+    IReadOnlyList<MonthlyRegisterCellDto> Days);
+
+public record StaffMonthlyRegisterDto(
+    int Year,
+    int Month,
+    IReadOnlyList<DateOnly> Dates,
+    IReadOnlyList<StaffMonthlyRegisterRowDto> Staff);
+
+public record StaffAttendanceSummaryRowDto(
+    int TeacherId,
+    string EmployeeCode,
+    string StaffName,
+    int WorkingDays,
+    int PresentDays,
+    int LateDays,
+    int AttendedDays,
+    int AbsentDays,
+    int LeaveDays,
+    int HolidayDays,
+    int UnmarkedDays);
+
+public record StaffAttendanceSummaryResultDto(
+    DateOnly StartDate,
+    DateOnly EndDate,
+    IReadOnlyList<StaffAttendanceSummaryRowDto> Rows);
 
 public record StaffAttendanceSheetResultDto(
     IReadOnlyList<StaffAttendanceRowDto> Rows,

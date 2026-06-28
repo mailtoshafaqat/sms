@@ -1,0 +1,251 @@
+@page "/attendance/staff-reports"
+@rendermode InteractiveServer
+@using System.Globalization
+@using SMS.Application.DTOs
+@using SMS.Application.Interfaces
+@using SMS.Domain.Enums
+@inject IStaffAttendanceService StaffAttendanceService
+@inject ISchoolService SchoolService
+@inject NavigationManager Navigation
+@inject IJSRuntime Js
+@inject ToastService Toast
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Coordinator")]
+
+<PageTitle>Staff Reports</PageTitle>
+
+<PageIntro Title="Staff Reports"
+           Subtitle="Monthly register (day-by-day) and summary counts for a date range — e.g. how many days each staff member attended in the last 30 days." />
+
+<div class="card toolbar-card no-print">
+    <span class="toolbar-section-label">Monthly register</span>
+    <label class="toolbar-field toolbar-field-sm">
+        <span class="field-label">Month</span>
+        <InputNumber @bind-Value="selectedMonth" class="field-input" min="1" max="12" />
+    </label>
+    <label class="toolbar-field toolbar-field-sm">
+        <span class="field-label">Year</span>
+        <InputNumber @bind-Value="selectedYear" class="field-input" min="2020" max="2100" />
+    </label>
+    <button class="btn btn-icon toolbar-action" @onclick="LoadRegisterAsync">
+        <AppIcon Name="load" />
+        <span>Load month</span>
+    </button>
+    @if (register is not null)
+    {
+        <a class="btn btn-secondary btn-icon toolbar-action" href="@GetRegisterExportUrl("pdf")" download>
+            <AppIcon Name="download" />
+            <span>PDF</span>
+        </a>
+        <a class="btn btn-secondary btn-icon toolbar-action" href="@GetRegisterExportUrl("csv")" download>
+            <AppIcon Name="download" />
+            <span>CSV</span>
+        </a>
+        <button class="btn btn-secondary btn-icon toolbar-action" @onclick="PrintRegisterAsync">
+            <AppIcon Name="download" />
+            <span>Print</span>
+        </button>
+    }
+</div>
+
+@if (register is not null)
+{
+    <div class="register-sheet" id="staff-monthly-register-print">
+        <div class="register-print-header">
+            <h2 class="register-school-name">@schoolName</h2>
+            <p class="register-title">Staff Monthly Attendance — @MonthLabel @register.Year</p>
+            <p class="register-meta">
+                Staff: <strong>@register.Staff.Count</strong>
+                &nbsp;|&nbsp; Days: <strong>@register.Dates.Count</strong>
+                &nbsp;|&nbsp; Working days: <strong>@WorkingDays</strong>
+            </p>
+        </div>
+
+        <table class="register-table">
+            <thead>
+                <tr>
+                    <th>Code</th>
+                    <th>Staff member</th>
+                    @foreach (var date in register.Dates)
+                    {
+                        <th class="register-day">@date.Day</th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in register.Staff)
+                {
+                    <tr>
+                        <td>@row.EmployeeCode</td>
+                        <td>@row.StaffName</td>
+                        @foreach (var cell in row.Days)
+                        {
+                            <td class="register-cell @(cell.IsNonWorkingDay ? "off-day" : "")">@GetCellCode(cell.Status)</td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <p class="register-legend">P=Present, A=Absent, L=Late, Lv=Leave, H=Holiday, -=Not marked</p>
+    </div>
+}
+
+<div class="card toolbar-card no-print staff-summary-toolbar">
+    <span class="toolbar-section-label">Summary</span>
+    <label class="toolbar-field">
+        <span class="field-label">Period</span>
+        <InputSelect @bind-Value="periodDays" @bind-Value:after="ApplyPeriod" class="field-select">
+            <option value="7">Last 7 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="90">Last 90 days</option>
+            <option value="0">Custom range</option>
+        </InputSelect>
+    </label>
+    <label class="toolbar-field">
+        <span class="field-label">From</span>
+        <InputDate @bind-Value="summaryStart" class="field-input" disabled="@(periodDays != 0)" />
+    </label>
+    <label class="toolbar-field">
+        <span class="field-label">To</span>
+        <InputDate @bind-Value="summaryEnd" class="field-input" disabled="@(periodDays != 0)" />
+    </label>
+    <button class="btn btn-icon toolbar-action" @onclick="LoadSummaryAsync">
+        <AppIcon Name="load" />
+        <span>Show summary</span>
+    </button>
+</div>
+
+@if (summary is not null)
+{
+    <div class="card table-card no-print">
+        <div class="card-header-row">
+            <h3>Attendance summary</h3>
+            <span class="hint">@summary.StartDate.ToString("dd MMM yyyy") — @summary.EndDate.ToString("dd MMM yyyy")</span>
+        </div>
+        <p class="hint">
+            <strong>Attended</strong> = Present + Late on working days.
+            <strong>Working days</strong> excludes weekly off and holidays.
+        </p>
+        @if (summary.Rows.Count == 0)
+        {
+            <p class="hint">No active staff found.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Code</th>
+                            <th>Staff member</th>
+                            <th>Working days</th>
+                            <th>Attended</th>
+                            <th>Present</th>
+                            <th>Late</th>
+                            <th>Absent</th>
+                            <th>Leave</th>
+                            <th>Holiday</th>
+                            <th>Not marked</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in summary.Rows)
+                        {
+                            <tr>
+                                <td>@row.EmployeeCode</td>
+                                <td>@row.StaffName</td>
+                                <td>@row.WorkingDays</td>
+                                <td><strong>@row.AttendedDays</strong></td>
+                                <td>@row.PresentDays</td>
+                                <td>@row.LateDays</td>
+                                <td>@row.AbsentDays</td>
+                                <td>@row.LeaveDays</td>
+                                <td>@row.HolidayDays</td>
+                                <td>@row.UnmarkedDays</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private StaffMonthlyRegisterDto? register;
+    private StaffAttendanceSummaryResultDto? summary;
+    private string schoolName = "School";
+    private int selectedMonth = DateTime.Today.Month;
+    private int selectedYear = DateTime.Today.Year;
+    private int periodDays = 30;
+    private DateTime summaryStart = DateTime.Today.AddDays(-29);
+    private DateTime summaryEnd = DateTime.Today;
+
+    private string MonthLabel => CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(selectedMonth);
+
+    private int WorkingDays => register?.Staff.Count > 0
+        ? register.Staff[0].Days.Count(x => !x.IsNonWorkingDay)
+        : register?.Dates.Count ?? 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var school = await SchoolService.GetSchoolSettingsAsync();
+        schoolName = school?.Name ?? "School";
+        await LoadRegisterAsync();
+        await LoadSummaryAsync();
+    }
+
+    private async Task LoadRegisterAsync()
+    {
+        try
+        {
+            register = await StaffAttendanceService.GetMonthlyRegisterAsync(selectedYear, selectedMonth);
+        }
+        catch (Exception ex)
+        {
+            register = null;
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task LoadSummaryAsync()
+    {
+        try
+        {
+            var start = DateOnly.FromDateTime(summaryStart);
+            var end = DateOnly.FromDateTime(summaryEnd);
+            summary = await StaffAttendanceService.GetSummaryAsync(start, end);
+        }
+        catch (Exception ex)
+        {
+            summary = null;
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private void ApplyPeriod()
+    {
+        if (periodDays <= 0)
+        {
+            return;
+        }
+
+        summaryEnd = DateTime.Today;
+        summaryStart = DateTime.Today.AddDays(-(periodDays - 1));
+    }
+
+    private string GetRegisterExportUrl(string format) =>
+        Navigation.ToAbsoluteUri($"/attendance/staff-register/export/{format}?year={selectedYear}&month={selectedMonth}").ToString();
+
+    private async Task PrintRegisterAsync() => await Js.InvokeVoidAsync("print");
+
+    private static string GetCellCode(AttendanceStatus? status) => status switch
+    {
+        AttendanceStatus.Present => "P",
+        AttendanceStatus.Absent => "A",
+        AttendanceStatus.Late => "L",
+        AttendanceStatus.Leave => "Lv",
+        AttendanceStatus.Holiday => "H",
+        _ => "-"
+    };
+}

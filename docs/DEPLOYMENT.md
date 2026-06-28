@@ -423,4 +423,4 @@ Technical/developer details: **`docs/HANDOVER.md`**.
 
 ---
 
-*ARTechnologies — SMS School Management System*
+*HiveTech — SMS School Management System*

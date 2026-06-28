@@ -383,5 +383,38 @@ public class ClassRepository(
             },
             cancellationToken);
 
+    public Task<Teacher?> GetTeacherByIdAsync(int teacherId, bool tracking = false, CancellationToken cancellationToken = default) =>
+        DbContextAccess.ReadOrWriteAsync(
+            factory,
+            scopedDb,
+            tracking,
+            async db =>
+            {
+                var query = db.Teachers.AsQueryable();
+                if (!tracking)
+                {
+                    query = query.AsNoTracking();
+                }
+
+                return await query.FirstOrDefaultAsync(x => x.Id == teacherId, cancellationToken);
+            },
+            cancellationToken);
+
+    public Task<bool> EmployeeCodeExistsAsync(int schoolId, string employeeCode, int? excludeTeacherId = null, CancellationToken cancellationToken = default) =>
+        DbContextAccess.ReadAsync(
+            factory,
+            async db =>
+            {
+                var query = db.Teachers.AsNoTracking()
+                    .Where(x => x.SchoolId == schoolId && x.EmployeeCode == employeeCode);
+                if (excludeTeacherId is > 0)
+                {
+                    query = query.Where(x => x.Id != excludeTeacherId);
+                }
+
+                return await query.AnyAsync(cancellationToken);
+            },
+            cancellationToken);
+
     public void AddTeacher(Teacher teacher) => scopedDb.Context.Teachers.Add(teacher);
 }

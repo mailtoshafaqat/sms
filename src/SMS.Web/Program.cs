@@ -124,6 +124,44 @@ app.MapGet("/attendance/register/export/pdf", async (
     return Results.File(bytes, "application/pdf", fileName);
 }).RequireAuthorization();
 
+app.MapGet("/attendance/staff-register/export/csv", async (
+    int year,
+    int month,
+    IStaffAttendanceService staffAttendanceService,
+    ISchoolService schoolService,
+    IStaffMonthlyRegisterExportService exportService,
+    CancellationToken cancellationToken) =>
+{
+    var register = await staffAttendanceService.GetMonthlyRegisterAsync(year, month, cancellationToken);
+    var school = await schoolService.GetSchoolSettingsAsync(cancellationToken);
+    var metadata = new RegisterExportMetadata(
+        school?.Name ?? "School",
+        school?.Address,
+        school?.Phone);
+    var bytes = exportService.BuildCsv(register, metadata);
+    var fileName = BuildStaffRegisterFileName(year, month, "csv");
+    return Results.File(bytes, "text/csv", fileName);
+}).RequireAuthorization(new AuthorizeAttribute { Roles = $"{RoleNames.Admin},{RoleNames.Coordinator}" });
+
+app.MapGet("/attendance/staff-register/export/pdf", async (
+    int year,
+    int month,
+    IStaffAttendanceService staffAttendanceService,
+    ISchoolService schoolService,
+    IStaffMonthlyRegisterExportService exportService,
+    CancellationToken cancellationToken) =>
+{
+    var register = await staffAttendanceService.GetMonthlyRegisterAsync(year, month, cancellationToken);
+    var school = await schoolService.GetSchoolSettingsAsync(cancellationToken);
+    var metadata = new RegisterExportMetadata(
+        school?.Name ?? "School",
+        school?.Address,
+        school?.Phone);
+    var bytes = exportService.BuildPdf(register, metadata);
+    var fileName = BuildStaffRegisterFileName(year, month, "pdf");
+    return Results.File(bytes, "application/pdf", fileName);
+}).RequireAuthorization(new AuthorizeAttribute { Roles = $"{RoleNames.Admin},{RoleNames.Coordinator}" });
+
 app.MapPost("/attendance/gate/scan", async (
     GateFaceScanRequest request,
     ILocalBiometricService localBiometricService,
@@ -219,6 +257,9 @@ static string BuildRegisterFileName(string sectionName, int year, int month, str
 
     return $"Attendance_{safeSection}_{year}_{month:D2}.{extension}";
 }
+
+static string BuildStaffRegisterFileName(int year, int month, string extension) =>
+    $"Staff_Attendance_{year}_{month:D2}.{extension}";
 
 app.Run();
 

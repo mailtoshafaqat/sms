@@ -114,6 +114,8 @@ public interface ITeacherAssignmentService
     Task<IReadOnlyList<TeacherStaffDto>> GetTeachersAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SectionTeacherAssignmentDto>> GetSectionAssignmentsAsync(CancellationToken cancellationToken = default);
     Task<int> EnsureTeacherProfileAsync(string userId, string firstName, string lastName, string? employeeCode = null, CancellationToken cancellationToken = default);
+    Task<StaffMemberFormDto?> GetStaffMemberAsync(int teacherId, CancellationToken cancellationToken = default);
+    Task<int> SaveStaffMemberAsync(StaffMemberFormDto dto, CancellationToken cancellationToken = default);
     Task AssignSectionTeacherAsync(int sectionId, int? teacherId, CancellationToken cancellationToken = default);
 }
 
@@ -134,6 +136,8 @@ public interface IStaffAttendanceService
 {
     Task<StaffAttendanceSheetResultDto> GetSheetAsync(DateOnly date, CancellationToken cancellationToken = default);
     Task SaveSheetAsync(DateOnly date, IReadOnlyList<StaffAttendanceRowDto> rows, string? userId, CancellationToken cancellationToken = default);
+    Task<StaffMonthlyRegisterDto> GetMonthlyRegisterAsync(int year, int month, CancellationToken cancellationToken = default);
+    Task<StaffAttendanceSummaryResultDto> GetSummaryAsync(DateOnly startDate, DateOnly endDate, CancellationToken cancellationToken = default);
 }
 
 public interface IBiometricDeviceConnector

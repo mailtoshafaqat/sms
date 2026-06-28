@@ -9,6 +9,7 @@
     --space-page: 0.9rem;
     --space-card: 0.75rem;
     --radius-card: 10px;
+    --sidebar-width: 252px;
 }
 
 .login-shell {
@@ -384,7 +385,7 @@ html, body {
     position: fixed;
     top: 0;
     left: 0;
-    width: 240px;
+    width: var(--sidebar-width);
     height: 100vh;
     overflow-y: auto;
     z-index: 100;
@@ -504,27 +505,43 @@ html, body {
 
 .brand {
     display: flex;
-    align-items: center;
-    gap: 0.6rem;
+    align-items: flex-start;
+    gap: 0.65rem;
     margin-bottom: 1rem;
 }
 
-.brand h1 {
-    margin: 0;
-    font-size: 1.1rem;
-    line-height: 1.3;
+.brand-text {
+    min-width: 0;
+    flex: 1;
 }
 
+.brand-title,
+.brand h1 {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 700;
+    line-height: 1.25;
+    color: #f1f5f9;
+    text-wrap: balance;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+.brand-subtitle,
 .brand p {
-    margin: 0.25rem 0 0;
+    margin: 0.2rem 0 0;
     color: #94a3b8;
-    font-size: 0.8rem;
+    font-size: 0.7rem;
+    line-height: 1.35;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 .brand-logo,
 .school-logo-preview {
-    width: 48px;
-    height: 48px;
+    flex-shrink: 0;
+    width: 42px;
+    height: 42px;
     object-fit: contain;
     border-radius: 8px;
     background: #fff;
@@ -975,8 +992,8 @@ tr.row-inactive {
 .content {
     display: flex;
     flex-direction: column;
-    margin-left: 240px;
-    width: calc(100% - 240px);
+    margin-left: var(--sidebar-width);
+    width: calc(100% - var(--sidebar-width));
     height: 100vh;
     overflow-y: auto;
 }
@@ -1465,6 +1482,70 @@ tr.row-status-holiday { background: rgba(254, 243, 199, 0.35); }
 tr.row-status-leave { background: rgba(237, 233, 254, 0.35); }
 tr.row-status-unmarked { background: rgba(241, 245, 249, 0.65); }
 
+.collapsible-section {
+    padding: 0;
+    overflow: hidden;
+}
+
+.card.collapsible-section {
+    padding: 0;
+}
+
+.collapsible-section > summary {
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: #0f172a;
+    padding: var(--space-card);
+    list-style: none;
+    user-select: none;
+}
+
+.collapsible-section > summary::-webkit-details-marker {
+    display: none;
+}
+
+.collapsible-section > summary::before {
+    content: "▸";
+    display: inline-block;
+    margin-right: 0.45rem;
+    color: #64748b;
+    transition: transform 0.15s ease;
+}
+
+.collapsible-section[open] > summary::before {
+    transform: rotate(90deg);
+}
+
+.collapsible-section > summary:hover {
+    background: #f8fafc;
+}
+
+.collapsible-section-content {
+    padding: 0.65rem var(--space-card) var(--space-card);
+    border-top: 1px solid #e5e7eb;
+}
+
+.collapsible-section-content:has(> .table-responsive:first-child) {
+    padding: 0;
+}
+
+.collapsible-section-content > .hint:first-child {
+    margin-top: 0;
+}
+
+.collapsible-section-content > .table-responsive {
+    margin: 0;
+    border-left: none;
+    border-right: none;
+    border-radius: 0;
+    background: transparent;
+}
+
+.collapsible-section-content > .form-grid:first-child {
+    margin-top: 0;
+}
+
 .card {
     background: #fff;
     border: 1px solid #e5e7eb;
@@ -1582,7 +1663,7 @@ th {
 .toolbar-card {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
+    align-items: flex-end;
     gap: 0.55rem;
 }
 
@@ -1590,6 +1671,46 @@ th {
     flex: 1 1 180px;
     min-width: 0;
     max-width: 280px;
+}
+
+.toolbar-card label.toolbar-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0;
+}
+
+.toolbar-card label.toolbar-field .field-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #475569;
+    line-height: 1.2;
+}
+
+.toolbar-card label.toolbar-field .field-input,
+.toolbar-card label.toolbar-field .field-select {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.toolbar-field-sm {
+    flex: 0 1 110px;
+    max-width: 110px;
+}
+
+.toolbar-card .toolbar-section-label {
+    align-self: center;
+    margin-right: 0.15rem;
+    font-weight: 700;
+    color: #334155;
+}
+
+.toolbar-card .toolbar-action {
+    flex: 0 0 auto;
+}
+
+.staff-summary-toolbar {
+    margin-top: 1rem;
 }
 
 .attendance-sheet tbody tr:hover {
@@ -1732,12 +1853,6 @@ th {
     margin: 0;
 }
 
-.form-grid label.checkbox-field {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-}
-
 .status-toggle {
     display: flex;
     flex-direction: column;
@@ -1809,6 +1924,24 @@ th {
     background: #fff;
 }
 
+.form-grid label.checkbox-field {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    align-self: start;
+    gap: 0.5rem;
+}
+
+.form-grid label.checkbox-field input[type="checkbox"] {
+    width: 1.1rem;
+    height: 1.1rem;
+    min-width: 1.1rem;
+    padding: 0;
+    margin: 0;
+    flex: 0 0 auto;
+    accent-color: #2563eb;
+}
+
 .form-grid label {
     display: flex;
     flex-direction: column;
@@ -1818,7 +1951,7 @@ th {
     min-width: 0;
 }
 
-.form-grid input,
+.form-grid input:not([type="checkbox"]):not([type="radio"]),
 .form-grid select,
 .form-grid textarea {
     width: 100%;
@@ -1830,7 +1963,7 @@ th {
     background: #fff;
 }
 
-.form-grid input:focus,
+.form-grid input:not([type="checkbox"]):not([type="radio"]):focus,
 .form-grid select:focus,
 .form-grid textarea:focus {
     outline: 2px solid #93c5fd;
@@ -2481,8 +2614,9 @@ th {
         width: 100%;
     }
 
+    .brand-title,
     .brand h1 {
-        font-size: 1rem;
+        font-size: 0.9rem;
     }
 
     .calendar-weekdays,

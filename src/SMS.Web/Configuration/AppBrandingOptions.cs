@@ -8,7 +8,7 @@ public class AppBrandingOptions
 
     public string ApplicationSubtitle { get; set; } = "School Management System";
 
-    public string CompanyName { get; set; } = "ARTechnologies";
+    public string CompanyName { get; set; } = "HiveTech";
 
     public string PoweredByLabel { get; set; } = "Powered by";
 

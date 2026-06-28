@@ -13,7 +13,7 @@
 
 <PageTitle>Staff & Sections</PageTitle>
 
-<PageIntro Title="Staff & Section Assignment" Subtitle="Link teacher accounts to class sections. Teachers only see attendance and students for their assigned sections." />
+<PageIntro Title="Staff & Section Assignment" Subtitle="Add staff with or without login. Staff without login still appear on Staff Attendance and can use a hardware device when connected." />
 
 @if (!string.IsNullOrWhiteSpace(loadError))
 {
@@ -25,8 +25,65 @@ else if (isLoading)
 }
 else
 {
-    <div class="card">
-        <h3>Assign class teacher</h3>
+    <details class="card collapsible-section" open="@(staffForm.Id > 0)">
+        <summary>@(staffForm.Id > 0 ? "Edit staff member" : "Add staff member")</summary>
+        <div class="collapsible-section-content">
+        <p class="hint">
+            Use this for teachers, peons, guards, accountants, and any employee.
+            <strong>Login is optional</strong> — only create a user account if they need to sign in to SMS.
+        </p>
+        <div class="form-grid form-grid-2">
+            <label class="form-field">
+                <span class="field-label">First name</span>
+                <InputText @bind-Value="staffForm.FirstName" class="field-input" />
+            </label>
+            <label class="form-field">
+                <span class="field-label">Last name</span>
+                <InputText @bind-Value="staffForm.LastName" class="field-input" />
+            </label>
+            <label class="form-field">
+                <span class="field-label">Employee code</span>
+                <InputText @bind-Value="staffForm.EmployeeCode" class="field-input" placeholder="Auto if blank, e.g. S001" />
+            </label>
+            <label class="form-field">
+                <span class="field-label">Phone</span>
+                <InputText @bind-Value="staffForm.Phone" class="field-input" />
+            </label>
+            <label class="form-field">
+                <span class="field-label">Fingerprint user ID</span>
+                <InputText @bind-Value="staffForm.FingerprintUserId" class="field-input" placeholder="Same as device user no." autocomplete="off" />
+                <span class="field-hint">For hardware finger terminal (future)</span>
+            </label>
+            <label class="form-field">
+                <span class="field-label">Face user ID</span>
+                <InputText @bind-Value="staffForm.FaceUserId" class="field-input" placeholder="Same as device user no." autocomplete="off" />
+                <span class="field-hint">For hardware face terminal (future)</span>
+            </label>
+            <label class="checkbox-field span-2">
+                <InputCheckbox @bind-Value="staffForm.IsActive" />
+                Active (shown on staff attendance)
+            </label>
+            @if (!string.IsNullOrWhiteSpace(staffForm.LinkedUserEmail))
+            {
+                <p class="hint span-2">Login linked: <code>@staffForm.LinkedUserEmail</code></p>
+            }
+            <div class="form-actions span-2">
+                <button type="button" class="btn btn-icon" @onclick="SaveStaffAsync">
+                    <AppIcon Name="save" />
+                    <span>@(staffForm.Id > 0 ? "Save staff" : "Add staff")</span>
+                </button>
+                @if (staffForm.Id > 0)
+                {
+                    <button type="button" class="btn btn-secondary" @onclick="ResetStaffForm">Cancel edit</button>
+                }
+            </div>
+        </div>
+        </div>
+    </details>
+
+    <details class="card collapsible-section">
+        <summary>Assign class teacher</summary>
+        <div class="collapsible-section-content">
         @if (assignmentRows.Count == 0)
         {
             <p class="hint">No sections found. Add classes under Classes first.</p>
@@ -70,11 +127,12 @@ else
                 </table>
             </div>
         }
-    </div>
+        </div>
+    </details>
 
-    <div class="card">
-        <h3>Teachers</h3>
-        <p class="hint">Create teacher logins under User Accounts, then link them here if needed.</p>
+    <details class="card collapsible-section">
+        <summary>All staff (@teacherRows.Count)</summary>
+        <div class="collapsible-section-content">
         <div class="table-responsive">
             <table>
                 <thead>
@@ -83,13 +141,14 @@ else
                         <th>Code</th>
                         <th>Login</th>
                         <th>Sections</th>
+                        <th></th>
                     </tr>
                 </thead>
                 <tbody>
                     @if (teacherRows.Count == 0)
                     {
                         <tr>
-                            <td colspan="4">No teacher profiles yet.</td>
+                            <td colspan="5">No staff yet. Use <strong>Add staff member</strong> above.</td>
                         </tr>
                     }
                     else
@@ -97,20 +156,31 @@ else
                         @foreach (var teacher in teacherRows)
                         {
                             <tr>
-                                <td>@teacher.FullName</td>
+                                <td>@teacher.FullName @(teacher.IsActive ? "" : "(inactive)")</td>
                                 <td>@teacher.EmployeeCode</td>
-                                <td>@(teacher.UserEmail ?? "—")</td>
+                                <td>@(teacher.UserEmail ?? "— No login —")</td>
                                 <td>@(teacher.AssignedSections.Count == 0 ? "—" : string.Join(", ", teacher.AssignedSections))</td>
+                                <td>
+                                    <button type="button" class="btn btn-secondary btn-icon-only" data-tooltip="Edit staff" @onclick="() => EditStaffAsync(teacher.Id)">
+                                        <AppIcon Name="edit" />
+                                    </button>
+                                </td>
                             </tr>
                         }
                     }
                 </tbody>
             </table>
         </div>
-    </div>
+        </div>
+    </details>
 
-    <div class="card form-grid">
-        <h3 class="span-2">Link user to teacher profile</h3>
+    <details class="card collapsible-section">
+        <summary>Link login to existing staff (optional)</summary>
+        <div class="collapsible-section-content form-grid">
+        <p class="hint span-2">
+            If you already created a <strong>Teacher</strong> user under User Accounts, link it here to connect login with the staff record.
+            Or add staff above first without login, then create a user later and link.
+        </p>
         <label>
             User account
             <InputSelect @bind-Value="linkUserId" class="field-select">
@@ -126,16 +196,18 @@ else
         <div class="actions span-2">
             <button type="button" class="btn btn-icon" @onclick="LinkUserAsync">
                 <AppIcon Name="add" />
-                <span>Create / update teacher profile</span>
+                <span>Create / update teacher profile from user</span>
             </button>
         </div>
-    </div>
+        </div>
+    </details>
 }
 
 @code {
     private List<SectionAssignmentRow> assignmentRows = [];
     private List<TeacherDisplayRow> teacherRows = [];
     private List<ApplicationUser> teacherUsers = [];
+    private StaffMemberFormDto staffForm = new();
     private string linkUserId = string.Empty;
     private string linkFirstName = string.Empty;
     private string linkLastName = string.Empty;
@@ -199,6 +271,41 @@ else
             isLoading = false;
         }
     }
+
+    private async Task SaveStaffAsync()
+    {
+        try
+        {
+            await TeacherAssignmentService.SaveStaffMemberAsync(staffForm);
+            Toast.Success(staffForm.Id > 0 ? "Staff member saved." : "Staff member added.");
+            ResetStaffForm();
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task EditStaffAsync(int teacherId)
+    {
+        var member = await TeacherAssignmentService.GetStaffMemberAsync(teacherId);
+        if (member is null)
+        {
+            Toast.Error("Staff member not found.");
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(member.LinkedUserId))
+        {
+            member.LinkedUserEmail = (await UserManager.FindByIdAsync(member.LinkedUserId))?.Email;
+        }
+
+        staffForm = member;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void ResetStaffForm() => staffForm = new StaffMemberFormDto();
 
     private async Task SaveAssignmentAsync(SectionAssignmentRow row)
     {

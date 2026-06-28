@@ -837,6 +837,51 @@ public class AppFeatureTests : IClassFixture<WebApplicationFactory<Program>>
         }
     }
 
+    [Fact]
+    public async Task StaffReports_MonthlyRegisterAndSummary_CountAttendedDays()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var teacherService = scope.ServiceProvider.GetRequiredService<ITeacherAssignmentService>();
+        var staffAttendance = scope.ServiceProvider.GetRequiredService<IStaffAttendanceService>();
+
+        var teacherId = await teacherService.SaveStaffMemberAsync(new StaffMemberFormDto
+        {
+            FirstName = "Report",
+            LastName = "Staff",
+            EmployeeCode = $"RS{Guid.NewGuid().ToString("N")[..4]}",
+            IsActive = true
+        });
+
+        try
+        {
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            var start = today.AddDays(-6);
+            await staffAttendance.SaveSheetAsync(today, [
+                new StaffAttendanceRowDto
+                {
+                    TeacherId = teacherId,
+                    EmployeeCode = "RS",
+                    StaffName = "Report Staff",
+                    Status = AttendanceStatus.Present
+                }
+            ], userId: null);
+
+            var register = await staffAttendance.GetMonthlyRegisterAsync(today.Year, today.Month);
+            Assert.Contains(register.Staff, x => x.StaffName.Contains("Report"));
+
+            var summary = await staffAttendance.GetSummaryAsync(start, today);
+            var row = Assert.Single(summary.Rows, x => x.TeacherId == teacherId);
+            Assert.True(row.AttendedDays >= 1, $"Expected at least 1 attended day, got {row.AttendedDays}");
+            Assert.True(row.PresentDays >= 1);
+
+            _output.WriteLine($"Staff summary: PASS — attended {row.AttendedDays}/{row.WorkingDays} working days");
+        }
+        finally
+        {
+            // Staff record left in DB is acceptable for integration test DB; no delete API for teachers.
+        }
+    }
+
     private static async Task<DateOnly> FindEditableAttendanceDateAsync(IAttendanceService attendanceService, int sectionId)
     {
         var today = DateOnly.FromDateTime(DateTime.Today);

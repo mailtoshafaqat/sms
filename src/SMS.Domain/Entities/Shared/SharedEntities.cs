@@ -133,6 +133,10 @@ public class Teacher : BaseEntity
     public string LastName { get; set; } = string.Empty;
     public string? Phone { get; set; }
     public string? UserId { get; set; }
+    /// <summary>Device user number for staff fingerprint terminal (when hardware is connected).</summary>
+    public string? FingerprintUserId { get; set; }
+    /// <summary>Device user number for staff face terminal (when hardware is connected).</summary>
+    public string? FaceUserId { get; set; }
     public bool IsActive { get; set; } = true;
 
     public string FullName => $"{FirstName} {LastName}".Trim();

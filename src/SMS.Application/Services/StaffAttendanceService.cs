@@ -99,6 +99,164 @@ public class StaffAttendanceService(
         await unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task<StaffMonthlyRegisterDto> GetMonthlyRegisterAsync(int year, int month, CancellationToken cancellationToken = default)
+    {
+        if (month is < 1 or > 12)
+        {
+            throw new ArgumentOutOfRangeException(nameof(month), "Month must be between 1 and 12.");
+        }
+
+        var school = await schoolRepository.GetFirstAsync(cancellationToken: cancellationToken)
+            ?? throw new InvalidOperationException("School not found.");
+        var teachers = await classRepository.GetTeachersAsync(school.Id, cancellationToken);
+        var activeTeachers = teachers.Where(x => x.IsActive).OrderBy(x => x.FirstName).ThenBy(x => x.LastName).ToList();
+
+        var firstDay = new DateOnly(year, month, 1);
+        var lastDay = firstDay.AddMonths(1).AddDays(-1);
+        var records = await staffAttendanceRepository.GetByDateRangeAsync(school.Id, firstDay, lastDay, cancellationToken);
+        var recordLookup = records.ToDictionary(x => (x.TeacherId, x.AttendanceDate));
+
+        var dates = new List<DateOnly>();
+        for (var date = firstDay; date <= lastDay; date = date.AddDays(1))
+        {
+            dates.Add(date);
+        }
+
+        var holidayCache = new Dictionary<DateOnly, HolidayInfo>();
+        async Task<HolidayInfo> GetHoliday(DateOnly date)
+        {
+            if (!holidayCache.TryGetValue(date, out var info))
+            {
+                info = await ResolveHolidayInfoAsync(date, school, cancellationToken);
+                holidayCache[date] = info;
+            }
+
+            return info;
+        }
+
+        var rows = new List<StaffMonthlyRegisterRowDto>();
+        foreach (var teacher in activeTeachers)
+        {
+            var cells = new List<MonthlyRegisterCellDto>();
+            foreach (var date in dates)
+            {
+                var holiday = await GetHoliday(date);
+                recordLookup.TryGetValue((teacher.Id, date), out var record);
+                cells.Add(new MonthlyRegisterCellDto(
+                    date,
+                    record?.Status ?? (holiday.IsNonWorkingDay ? AttendanceStatus.Holiday : null),
+                    holiday.IsNonWorkingDay));
+            }
+
+            rows.Add(new StaffMonthlyRegisterRowDto(teacher.EmployeeCode, teacher.FullName, cells));
+        }
+
+        return new StaffMonthlyRegisterDto(year, month, dates, rows);
+    }
+
+    public async Task<StaffAttendanceSummaryResultDto> GetSummaryAsync(
+        DateOnly startDate,
+        DateOnly endDate,
+        CancellationToken cancellationToken = default)
+    {
+        if (endDate < startDate)
+        {
+            throw new ArgumentException("End date must be on or after start date.");
+        }
+
+        var school = await schoolRepository.GetFirstAsync(cancellationToken: cancellationToken)
+            ?? throw new InvalidOperationException("School not found.");
+        var teachers = await classRepository.GetTeachersAsync(school.Id, cancellationToken);
+        var activeTeachers = teachers.Where(x => x.IsActive).OrderBy(x => x.FirstName).ThenBy(x => x.LastName).ToList();
+        var records = await staffAttendanceRepository.GetByDateRangeAsync(school.Id, startDate, endDate, cancellationToken);
+        var recordLookup = records.ToDictionary(x => (x.TeacherId, x.AttendanceDate));
+
+        var holidayCache = new Dictionary<DateOnly, HolidayInfo>();
+        async Task<HolidayInfo> GetHoliday(DateOnly date)
+        {
+            if (!holidayCache.TryGetValue(date, out var info))
+            {
+                info = await ResolveHolidayInfoAsync(date, school, cancellationToken);
+                holidayCache[date] = info;
+            }
+
+            return info;
+        }
+
+        var dates = new List<DateOnly>();
+        for (var date = startDate; date <= endDate; date = date.AddDays(1))
+        {
+            dates.Add(date);
+        }
+
+        var rows = new List<StaffAttendanceSummaryRowDto>();
+        foreach (var teacher in activeTeachers)
+        {
+            var present = 0;
+            var late = 0;
+            var absent = 0;
+            var leave = 0;
+            var holiday = 0;
+            var unmarked = 0;
+            var workingDays = 0;
+
+            foreach (var date in dates)
+            {
+                var holidayInfo = await GetHoliday(date);
+                if (holidayInfo.IsNonWorkingDay)
+                {
+                    holiday++;
+                    continue;
+                }
+
+                workingDays++;
+                if (!recordLookup.TryGetValue((teacher.Id, date), out var record))
+                {
+                    unmarked++;
+                    continue;
+                }
+
+                switch (record.Status)
+                {
+                    case AttendanceStatus.Present:
+                        present++;
+                        break;
+                    case AttendanceStatus.Late:
+                        late++;
+                        break;
+                    case AttendanceStatus.Absent:
+                        absent++;
+                        break;
+                    case AttendanceStatus.Leave:
+                        leave++;
+                        break;
+                    case AttendanceStatus.Holiday:
+                        holiday++;
+                        workingDays--;
+                        break;
+                    default:
+                        unmarked++;
+                        break;
+                }
+            }
+
+            rows.Add(new StaffAttendanceSummaryRowDto(
+                teacher.Id,
+                teacher.EmployeeCode,
+                teacher.FullName,
+                workingDays,
+                present,
+                late,
+                present + late,
+                absent,
+                leave,
+                holiday,
+                unmarked));
+        }
+
+        return new StaffAttendanceSummaryResultDto(startDate, endDate, rows);
+    }
+
     private async Task<HolidayInfo> ResolveHolidayInfoAsync(
         DateOnly date,
         Domain.Entities.Shared.School school,

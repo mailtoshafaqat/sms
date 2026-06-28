@@ -16,6 +16,8 @@ public interface IClassRepository
     Task<IReadOnlyList<int>> GetSectionIdsForTeacherUserAsync(string userId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Teacher>> GetTeachersAsync(int schoolId, CancellationToken cancellationToken = default);
     Task<Teacher?> GetTeacherByUserIdAsync(string userId, bool tracking = false, CancellationToken cancellationToken = default);
+    Task<Teacher?> GetTeacherByIdAsync(int teacherId, bool tracking = false, CancellationToken cancellationToken = default);
+    Task<bool> EmployeeCodeExistsAsync(int schoolId, string employeeCode, int? excludeTeacherId = null, CancellationToken cancellationToken = default);
     void AddTeacher(Teacher teacher);
     Task<int> GetMaxSectionDisplayOrderAsync(int classRoomId, CancellationToken cancellationToken = default);
     Task<Section?> GetSectionByIdAsync(int id, bool tracking = false, CancellationToken cancellationToken = default);

@@ -100,6 +100,64 @@ public class TeacherAssignmentService(
         return teacher.Id;
     }
 
+    public async Task<StaffMemberFormDto?> GetStaffMemberAsync(int teacherId, CancellationToken cancellationToken = default)
+    {
+        var teacher = await classRepository.GetTeacherByIdAsync(teacherId, cancellationToken: cancellationToken);
+        return teacher is null ? null : MapStaffMember(teacher);
+    }
+
+    public async Task<int> SaveStaffMemberAsync(StaffMemberFormDto dto, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(dto.FirstName) || string.IsNullOrWhiteSpace(dto.LastName))
+        {
+            throw new InvalidOperationException("First name and last name are required.");
+        }
+
+        var school = await schoolRepository.GetFirstAsync(cancellationToken: cancellationToken)
+            ?? throw new InvalidOperationException("School not found.");
+
+        Teacher teacher;
+        if (dto.Id > 0)
+        {
+            teacher = await classRepository.GetTeacherByIdAsync(dto.Id, tracking: true, cancellationToken)
+                ?? throw new InvalidOperationException("Staff member not found.");
+        }
+        else
+        {
+            var teachers = await classRepository.GetTeachersAsync(school.Id, cancellationToken);
+            teacher = new Teacher
+            {
+                SchoolId = school.Id,
+                EmployeeCode = string.IsNullOrWhiteSpace(dto.EmployeeCode)
+                    ? $"S{teachers.Count + 1:000}"
+                    : dto.EmployeeCode.Trim(),
+                IsActive = true
+            };
+            classRepository.AddTeacher(teacher);
+        }
+
+        var employeeCode = string.IsNullOrWhiteSpace(dto.EmployeeCode)
+            ? teacher.EmployeeCode
+            : dto.EmployeeCode.Trim();
+
+        if (await classRepository.EmployeeCodeExistsAsync(school.Id, employeeCode, teacher.Id > 0 ? teacher.Id : null, cancellationToken))
+        {
+            throw new InvalidOperationException($"Employee code '{employeeCode}' is already in use.");
+        }
+
+        teacher.FirstName = dto.FirstName.Trim();
+        teacher.LastName = dto.LastName.Trim();
+        teacher.EmployeeCode = employeeCode;
+        teacher.Phone = string.IsNullOrWhiteSpace(dto.Phone) ? null : dto.Phone.Trim();
+        teacher.FingerprintUserId = string.IsNullOrWhiteSpace(dto.FingerprintUserId) ? null : dto.FingerprintUserId.Trim();
+        teacher.FaceUserId = string.IsNullOrWhiteSpace(dto.FaceUserId) ? null : dto.FaceUserId.Trim();
+        teacher.IsActive = dto.IsActive;
+        teacher.UpdatedAt = DateTime.UtcNow;
+
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return teacher.Id;
+    }
+
     public async Task AssignSectionTeacherAsync(int sectionId, int? teacherId, CancellationToken cancellationToken = default)
     {
         var section = await classRepository.GetSectionWithClassRoomAsync(sectionId, tracking: true, cancellationToken)
@@ -118,4 +176,17 @@ public class TeacherAssignmentService(
         section.UpdatedAt = DateTime.UtcNow;
         await unitOfWork.SaveChangesAsync(cancellationToken);
     }
+
+    private static StaffMemberFormDto MapStaffMember(Teacher teacher) => new()
+    {
+        Id = teacher.Id,
+        FirstName = teacher.FirstName,
+        LastName = teacher.LastName,
+        EmployeeCode = teacher.EmployeeCode,
+        Phone = teacher.Phone,
+        FingerprintUserId = teacher.FingerprintUserId,
+        FaceUserId = teacher.FaceUserId,
+        IsActive = teacher.IsActive,
+        LinkedUserId = teacher.UserId
+    };
 }
